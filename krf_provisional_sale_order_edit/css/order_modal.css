@@ -1,0 +1,26 @@
+/* Shared modal layout for Add and Edit pages. */
+#stockdataModal .modal-dialog{width:96vw;max-width:1400px!important;margin:2vh auto}
+#stockdataModal .modal-content{height:92vh;max-height:92vh;display:flex;flex-direction:column}
+#stockdataModal .modal-header,#stockdataModal .modal-footer{flex:0 0 auto}
+#stockdataModal #stockdataModalContent{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden}
+#stockdataModal .tablestockshow .table-responsive{height:32vh;max-height:32vh;min-height:150px;overflow:auto!important;width:100%}
+#stockdataModal .tablestockshow thead th{position:sticky;top:0;z-index:2;background:#e5f2ff}
+#orderEnquiryBanner.order-enquiry-edit{display:none!important}
+@media(max-width:760px){#stockdataModal .modal-dialog{width:98vw;margin:1vh auto}#stockdataModal .modal-content{height:96vh;max-height:96vh}#stockdataModal #stockdataModalContent{padding:12px!important}#stockdataModal .tablestockshow .table-responsive{height:30vh;max-height:30vh}}
+
+/* Enquiry form: fixed header/footer with one scrolling body. */
+#newProductEnquiryModal .modal-dialog{width:calc(100% - 24px);max-width:900px;margin:2vh auto;min-height:0!important;height:96vh;display:flex;align-items:center}
+#newProductEnquiryModal .modal-content{max-height:92vh;width:100%;display:flex;flex-direction:column;overflow:hidden}
+#newProductEnquiryModal .modal-header{flex:0 0 auto}
+#newProductEnquiryModal #productEnquiryForm{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow:hidden;margin:0}
+#newProductEnquiryModal .modal-body{flex:1 1 auto;min-height:0;overflow-y:auto!important;overflow-x:hidden;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
+#newProductEnquiryModal .modal-footer{flex:0 0 auto;background:#fff}
+#newProductEnquiryModal .select2-container--open{z-index:1065}
+#newProductEnquiryModal .select2-results__options{display:block!important;max-height:220px!important;overflow-y:auto!important;overscroll-behavior-y:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+#newProductEnquiryModal .select2-results__option{display:block!important;white-space:normal}
+@media(max-width:760px){#newProductEnquiryModal .modal-dialog{width:calc(100% - 12px);margin:1vh auto;height:98vh}#newProductEnquiryModal .modal-content{max-height:96vh}#newProductEnquiryModal .modal-body{padding:12px!important}#newProductEnquiryModal .modal-header{padding:12px!important}#newProductEnquiryModal .modal-footer{padding:12px!important}}
+
+#enquiryItemsTable .enq-date-group{min-width:170px;flex-wrap:nowrap}
+#enquiryItemsTable .enq-date-group .enq-date{min-width:115px}
+#enquiryItemsTable .enq-calendar-wrap{position:relative;cursor:pointer;width:36px;justify-content:center}
+#enquiryItemsTable .enq-date-picker{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;padding:0;border:0}

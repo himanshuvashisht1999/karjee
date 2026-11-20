@@ -1,0 +1,112 @@
+{
+    "locations": [
+        {
+            "sno": 1,
+            "LocationId": "LOC6905e0eb22054",
+            "CompanyID": "19",
+            "SubCompanyID": "12",
+            "ProjectID": "17",
+            "LocationName": "Ambikapur",
+            "LocationAddress": "Ambikapur",
+            "Comments": "",
+            "created_at": "2025-11-01 15:58:59",
+            "tedit": null
+        },
+        {
+            "sno": 2,
+            "LocationId": "LOC6905e0fd5ab05",
+            "CompanyID": "19",
+            "SubCompanyID": "12",
+            "ProjectID": "17",
+            "LocationName": "Karjee",
+            "LocationAddress": "Karjee",
+            "Comments": "",
+            "created_at": "2025-11-01 15:59:17",
+            "tedit": null
+        },
+        {
+            "sno": 3,
+            "LocationId": "LOC6905e1117eb3c",
+            "CompanyID": "19",
+            "SubCompanyID": "12",
+            "ProjectID": "17",
+            "LocationName": "Mayapur",
+            "LocationAddress": "Mayapur",
+            "Comments": "",
+            "created_at": "2025-11-01 15:59:37",
+            "tedit": null
+        },
+        {
+            "sno": 4,
+            "LocationId": "LOC691abae84404c",
+            "CompanyID": "19",
+            "SubCompanyID": "12",
+            "ProjectID": "17",
+            "LocationName": "KARJEE1",
+            "LocationAddress": "",
+            "Comments": "",
+            "created_at": "2025-11-17 11:34:24",
+            "tedit": null
+        },
+        {
+            "sno": 5,
+            "LocationId": "LOC691d69de86d38",
+            "CompanyID": "19",
+            "SubCompanyID": "12",
+            "ProjectID": "17",
+            "LocationName": "BHANDAR",
+            "LocationAddress": "",
+            "Comments": "",
+            "created_at": "2025-11-19 12:25:26",
+            "tedit": null
+        },
+        {
+            "sno": 6,
+            "LocationId": "LOC696b280faf104",
+            "CompanyID": "19",
+            "SubCompanyID": "12",
+            "ProjectID": "17",
+            "LocationName": "SARGWAN",
+            "LocationAddress": "",
+            "Comments": "",
+            "created_at": "2026-01-17 11:41:27",
+            "tedit": null
+        },
+        {
+            "sno": 7,
+            "LocationId": "LOC6979a85ebe701",
+            "CompanyID": "19",
+            "SubCompanyID": "12",
+            "ProjectID": "17",
+            "LocationName": "SOHGA",
+            "LocationAddress": "",
+            "Comments": "",
+            "created_at": "2026-01-28 11:40:38",
+            "tedit": null
+        },
+        {
+            "sno": 8,
+            "LocationId": "LOC697a07f42acd2",
+            "CompanyID": "19",
+            "SubCompanyID": "12",
+            "ProjectID": "17",
+            "LocationName": "HARIPUR",
+            "LocationAddress": "",
+            "Comments": "",
+            "created_at": "2026-01-28 18:28:28",
+            "tedit": null
+        },
+        {
+            "sno": 9,
+            "LocationId": "LOC697df28f0b4f7",
+            "CompanyID": "19",
+            "SubCompanyID": "12",
+            "ProjectID": "17",
+            "LocationName": "Hazaribagh",
+            "LocationAddress": "",
+            "Comments": "",
+            "created_at": "2026-01-31 17:46:15",
+            "tedit": null
+        }
+    ]
+}

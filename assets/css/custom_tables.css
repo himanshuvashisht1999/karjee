@@ -1,0 +1,197 @@
+/* Custom Table Styles - Modern & Smart */
+
+/* Base Table Style - Applied Globally to .custom-table AND generic table */
+.custom-table,
+table {
+    width: 100%;
+    margin-bottom: 1rem;
+    color: #444;
+    border-collapse: collapse !important;
+    border-spacing: 0;
+    background-color: #fff;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
+    font-family: 'Poppins', sans-serif;
+}
+
+/* Table Header */
+.custom-table thead,
+table thead {
+    background: linear-gradient(135deg, #e2f2fe 0%, #dbeafe 100%) !important;
+    color: #052c65 !important;
+}
+
+.custom-table thead th,
+table thead th,
+table thead td {
+    background: transparent !important;
+    color: #052c65 !important;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.72rem !important;
+    padding: 3px 5px !important;
+    border: 1px solid rgba(5, 44, 101, 0.15) !important;
+    border-bottom: 2px solid #cbd5e1 !important;
+    vertical-align: middle;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+/* Table Body Rows */
+.custom-table tbody tr,
+table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.custom-table tbody tr:nth-of-type(even),
+table tbody tr:nth-of-type(even) {
+    background-color: #f8f9fa !important;
+}
+
+.custom-table tbody tr:hover,
+table tbody tr:hover {
+    background-color: #e2e6ea !important;
+}
+
+/* Table Cells - Borders Enabled */
+.custom-table td,
+table td {
+    padding: 2px 4px !important;
+    vertical-align: middle;
+    font-size: 0.8rem !important;
+    color: #333;
+    border: 1px solid #dee2e6 !important;
+}
+
+/* Form Controls & Inputs inside Tables - Extra Compact & Neat */
+table .form-control,
+table .form-select,
+.custom-table .form-control,
+.custom-table .form-select,
+.premium-table .form-control,
+.premium-table .form-select {
+    font-size: 0.78rem !important;
+    padding: 0.15rem 0.35rem !important;
+    height: 28px !important;
+    border-radius: 4px !important;
+}
+
+table .select2-container .select2-selection--single,
+.custom-table .select2-container .select2-selection--single,
+.premium-table .select2-container .select2-selection--single {
+    height: 28px !important;
+    font-size: 0.78rem !important;
+    border-radius: 4px !important;
+}
+
+table .select2-container--default .select2-selection--single .select2-selection__rendered,
+.custom-table .select2-container--default .select2-selection--single .select2-selection__rendered,
+.premium-table .select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: 26px !important;
+    font-size: 0.78rem !important;
+    padding-left: 4px !important;
+}
+
+table .select2-container--default .select2-selection--single .select2-selection__arrow,
+.custom-table .select2-container--default .select2-selection--single .select2-selection__arrow,
+.premium-table .select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 26px !important;
+}
+
+/* Specific handling for table-bordered class if present */
+.table-bordered.custom-table,
+table.table-bordered {
+    border: 1px solid #dee2e6;
+}
+
+.table-bordered.custom-table th,
+.table-bordered.custom-table td,
+table.table-bordered th,
+table.table-bordered td {
+    border: 1px solid #dee2e6 !important;
+}
+
+/* Validating Responsive behavior - Enhanced for all tables */
+.table-responsive {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+/* Ensure table acts like a table, NOT a block */
+table {
+    width: 100%;
+    margin-bottom: 0;
+    /* Margin handled by wrapper */
+    border-collapse: collapse !important;
+    background-color: #fff;
+}
+
+/* Fix for alignment issues - remove forced block/table display on parts */
+table thead,
+table tbody,
+table tfoot {
+    /* display: table-header-group/row-group is default, do not override with 'table' */
+    width: auto;
+}
+
+/* Border corrections */
+.table-bordered {
+    border: 1px solid #dee2e6;
+}
+
+.table-bordered th,
+.table-bordered td {
+    border: 1px solid #dee2e6 !important;
+}
+
+/* Mobile optimizations */
+@media (max-width: 992px) {
+
+    .custom-table td,
+    table td,
+    table th {
+        white-space: nowrap;
+        font-size: 0.8rem !important;
+    }
+}
+
+/* Badges inside table */
+.custom-table td .badge,
+table td .badge {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 5px 8px;
+    border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Buttons inside table */
+.custom-table td .btn,
+table td .btn {
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 0.8rem;
+    margin: 1px;
+}
+
+/* Special Text Alignment & Formatting */
+.text-end,
+.text-right {
+    text-align: right !important;
+}
+
+.text-center {
+    text-align: center !important;
+}
+
+.fw-bold {
+    font-weight: 600 !important;
+}
+
+/* High Contrast Dark Color for Muted Text for High Visibility */
+.text-muted {
+    color: #334155 !important;
+}

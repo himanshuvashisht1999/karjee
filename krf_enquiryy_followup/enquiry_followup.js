@@ -1,0 +1,64 @@
+$(function(){
+const $page=$('#efPage');if(!$page.length)return;
+const esc=v=>$('<span>').text(v==null?'':String(v)).html(),warning=m=>alertmessage('warning',m);
+const root=String($('body').data('routurl')||'').replace(/\/?$/,'/'),base=new URL('./',location.href),admin=$page.attr('data-admin'),csrf=$page.attr('data-csrf');
+const key=new URL(location.href).searchParams.get('k')||String($('body').data('key')||'');
+let rows=[],clientRows=[],busy=false,historySequence=0;
+const open=r=>!['converted','not interested','cancelled','closed'].includes(String(r.status||'').trim().toLowerCase());
+const date=v=>{const m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})(.*)$/);return m?m[3]+'-'+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2])-1]+'-'+m[1]+m[4]:String(v||'');};
+const api=(action,data={})=>$.ajax({url:new URL('api.php?action='+action,base).href,type:'POST',dataType:'json',data:{...data,admin,csrf,k:key}});
+const fail=x=>{const message=x.responseJSON?.message||x.message||'Request failed. Refresh the page.';$('#efWarning').addClass('ef-warning-error').text(message);warning(message);};
+const $modal=$('#efModal').appendTo(document.body),$backdrop=$('<div class="ef-backdrop" hidden>').appendTo(document.body);
+function close(){if(busy)return;$modal.prop('hidden',true);$backdrop.prop('hidden',true);}$('.ef-close').on('click',close);
+    const gridState=new Map();let $gridPopup=null;
+    function closeGridPopup(){if($gridPopup)$gridPopup.remove();$gridPopup=null;}
+    function stateFor(table){if(!gridState.has(table))gridState.set(table,{filters:{},sort:null});return gridState.get(table);}
+    function applyGridFilters($table){
+        const state=stateFor($table[0]),search=String($('#caSearch').val()||'').toLowerCase();
+        if(state.sort){const {column,direction}=state.sort;const rows=$table.find('tbody tr').get();rows.sort((a,b)=>$(a).children('td').eq(column).text().trim().localeCompare($(b).children('td').eq(column).text().trim(),undefined,{numeric:true})*direction);$table.find('tbody').append(rows);}
+        $table.find('tbody tr').each(function(){const $row=$(this);const matches=Object.entries(state.filters).every(([column,values])=>values.includes($row.children('td').eq(Number(column)).text().trim()));const globalMatch=!$table.is('#caOrders,#caSettlements')||$row.text().toLowerCase().includes(search);$row.toggle(matches&&globalMatch);});
+        $table.find('.ca-column-filter').each(function(){$(this).toggleClass('active',Object.prototype.hasOwnProperty.call(state.filters,this.dataset.column));});
+    }
+    function refreshGridFilters(){
+        $('#caOrders,#caSettlements').each(function(){
+            const $table=$(this),$head=$table.find('thead');if(!$head.length)return;
+            $head.find('.ca-filter-row').remove();$head.find('.ca-column-filter,.ca-grid-reset').remove();
+            $head.find('tr').first().children('th').each(function(column){
+                const title=$(this).text().trim();
+                if(!/^(action|actions)$/i.test(title)&&column<$table.find('tbody tr').first().children('td').length&&!$table.find('tbody tr').first().children('td').eq(column).find('button').length){$(this).append($('<button type="button" class="ca-column-filter">').attr('data-column',column).attr('aria-label','Filter '+title).attr('title','Filter '+title).text('▼'));}
+            });
+            $head.find('th').last().append($('<button type="button" class="ca-grid-reset">').text('Reset filters'));
+            applyGridFilters($table);
+        });
+    }
+    $(document).on('click','.ca-column-filter',function(e){
+        e.stopPropagation();closeGridPopup();const button=this,$table=$(this).closest('table'),column=Number(this.dataset.column),state=stateFor($table[0]);
+        const choices=[...new Set($table.find('tbody tr').map(function(){return $(this).children('td').eq(column).text().trim();}).get())].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+        const chosen=new Set(state.filters[column]||choices);
+        $gridPopup=$('<div class="ca-grid-popup" role="dialog" aria-label="Column filter">').appendTo(document.body);
+        const $popup=$gridPopup;
+        $popup.html('<div class="ca-grid-title"><strong></strong><button type="button" data-close>×</button></div><div class="ca-grid-actions"><button type="button" data-sort="1">Sort A → Z</button><button type="button" data-sort="-1">Sort Z → A</button></div><input type="search" data-find placeholder="Search values…" aria-label="Search filter values"><div class="ca-grid-actions"><button type="button" data-all>Select all</button><button type="button" data-none>Select none</button></div><div class="ca-grid-values"></div><div class="ca-grid-actions"><button type="button" data-apply>Apply</button><button type="button" data-clear>Clear column</button><button type="button" data-reset>Reset all</button></div>');
+        $popup.find('strong').text(button.title.replace('Filter ',''));
+        function render(){const q=String($popup.find('[data-find]').val()||'').toLowerCase();const $values=$popup.find('.ca-grid-values').empty();choices.forEach((value,index)=>{if(!(value||'(Blank)').toLowerCase().includes(q))return;const $check=$('<input type="checkbox">').prop('checked',chosen.has(value)).on('change',function(){if(this.checked)chosen.add(value);else chosen.delete(value);});$values.append($('<label>').append($check,$('<span>').text(value||'(Blank)')));});}
+        const rect=button.getBoundingClientRect();$popup.css({left:Math.max(8,Math.min(rect.left,innerWidth-328)),top:8});render();$popup.css('top',Math.max(8,Math.min(rect.bottom+4,innerHeight-$popup.outerHeight()-8)));
+        $popup.on('click',function(event){event.stopPropagation();});$popup.find('[data-find]').on('input',render);
+        $popup.find('[data-close]').on('click',closeGridPopup);
+        $popup.find('[data-all],[data-none]').on('click',function(){const q=String($popup.find('[data-find]').val()||'').toLowerCase();choices.filter(v=>(v||'(Blank)').toLowerCase().includes(q)).forEach(v=>{if(this.hasAttribute('data-all'))chosen.add(v);else chosen.delete(v);});render();});
+        $popup.find('[data-apply]').on('click',function(){if(chosen.size===choices.length)delete state.filters[column];else state.filters[column]=[...chosen];applyGridFilters($table);closeGridPopup();});
+        $popup.find('[data-clear]').on('click',function(){delete state.filters[column];applyGridFilters($table);closeGridPopup();});
+        $popup.find('[data-reset]').on('click',function(){state.filters={};state.sort=null;applyGridFilters($table);closeGridPopup();});
+        $popup.find('[data-sort]').on('click',function(){state.sort={column,direction:Number(this.dataset.sort)};applyGridFilters($table);closeGridPopup();});
+    });
+    $(document).on('click','.ca-grid-reset',function(){const $table=$(this).closest('table'),state=stateFor($table[0]);state.filters={};state.sort=null;if($table.is('#caOrders,#caSettlements'))$('#caSearch').val('');applyGridFilters($table);closeGridPopup();});
+    $(document).on('click',closeGridPopup).on('keydown',function(e){if(e.key==='Escape')closeGridPopup();});
+    $('#caSearch').on('input',function(){$('#caOrders,#caSettlements').each(function(){applyGridFilters($(this));});});
+
+function render(){const status=$('#efStatus').val();const data=status==='open'?rows.filter(open):status==='converted'?rows.filter(r=>String(r.status||'').toLowerCase()==='converted'):rows;const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());$('#caOrders tbody').html(data.map(r=>`<tr class="${open(r)&&r.next_followup_date&&r.next_followup_date.slice(0,10)<=today?'ef-late':''}"><td>${esc(r.clientname)}</td><td>${esc(r.mobileno)}</td><td>${esc(r.product_name)}</td><td>${esc(r.quantity)}</td><td>${esc(date(r.expected_date))}</td><td>${esc(r.statename)}</td><td>${esc(r.districtname)}</td><td>${esc(r.cityname)}</td><td>${open(r)?esc(date(r.next_followup_date)):'—'}</td><td>${esc(r.status==='Converted'?'Converted to PO: '+(r.linked_psono||''):r.last_reason)}</td><td>${open(r)?`<button type="button" class="btn btn-sm btn-primary ef-open" data-id="${r.id}">Follow Up</button>`:`<button type="button" class="btn btn-sm btn-outline-secondary ef-open" data-id="${r.id}">History</button>`}</td></tr>`).join(''));refreshGridFilters();}
+function load(){return api('list').done(res=>{rows=res.data;render();const id=new URL(location.href).searchParams.get('open_enquiry');if(id&&!$modal.data('auto-opened')){$modal.data('auto-opened',true);showClient(id);}}).fail(fail);}
+function efMinFollowup(){const t=Math.ceil((Date.now()+15*60000)/60000)*60000;const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(t));const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
+function efRefreshMinimum(){const min=efMinFollowup();$('#efNext').attr('min',min);return min;}
+function showClient(id){const selected=rows.find(r=>String(r.id)===String(id));if(!selected)return;clientRows=rows.filter(r=>r.phone_key===selected.phone_key);$('#efClient').text(selected.clientname+' — '+selected.mobileno);$('#efItems').html(clientRows.map(r=>`<tr><td><input class="ef-choice" type="checkbox" value="${r.id}" ${String(r.id)===String(id)&&open(r)?'checked':''} ${open(r)?'':'disabled'}></td><td>${esc(r.product_name)}</td><td>${esc(r.quantity)}</td><td>${esc(date(r.expected_date))}</td></tr>`).join(''));$('#efSelectAll').prop('checked',false);$('#efReason,#efConversation').val('');$('#efNext').val('');efRefreshMinimum();$('#efNextWrap').prop('hidden',true);$('#efWarning').removeClass('ef-warning-error').text('');$modal.prop('hidden',false);$backdrop.prop('hidden',false);const sequence=++historySequence;$('#efHistory').html('<p class="ef-note">Loading log…</p>');api('history',{ids:JSON.stringify(clientRows.map(r=>r.id))}).done(res=>{if(sequence!==historySequence)return;$('#efHistory').html(res.data.map(r=>`<article class="ef-log-entry"><strong>${esc(r.reason)}</strong><div class="ef-log-meta">${esc(date(r.created_at))} · ${esc(r.created_by_name)}</div><p>${esc(r.product_name)}</p><p>${esc(r.conversation)}</p>${r.next_followup_date?`<div>Next follow-up: ${esc(date(r.next_followup_date))}</div>`:''}${r.psono?`<div>PSO: ${esc(r.psono)}</div>`:''}</article>`).join('')||'<p class="ef-note">No follow-up log yet.</p>');}).fail(fail);}
+$('#caOrders').on('click','.ef-open',function(){showClient(this.dataset.id);});$('#efSelectAll').on('change',function(){$('.ef-choice:not(:disabled)').prop('checked',this.checked);});$('#efReason').on('change',function(){$('#efNextWrap').prop('hidden',this.value!=='Call Me Later');if(this.value==='Call Me Later')efRefreshMinimum();$('#efSave').text(this.value==='Create PO'?'Open PO Creation':'Save Follow-up');if(this.value==='Create PO')$('#efSave').trigger('click');});$('#efRefresh').on('click',load);$('#efStatus').on('change',render);
+$('#efSave').on('click',async function(){if(busy)return;const ids=$('.ef-choice:checked').map(function(){return Number(this.value);}).get(),reason=$('#efReason').val(),conversation=$('#efConversation').val().trim(),next=$('#efNext').val();if(!ids.length){warning('Select at least one open enquiry item.');return;}if(!reason){warning('Select an action.');return;}if(reason!=='Create PO'&&!conversation){warning('Enter the conversation.');return;}if(reason==='Call Me Later'&&!next){warning('Select a next follow-up date and time.');return;}if(reason==='Call Me Later'&&(!Number.isFinite(Date.parse(next+':00+05:30'))||Date.parse(next+':00+05:30')<Date.now()+15*60000)){efRefreshMinimum();warning('Next follow-up must be at least 15 minutes from now.');return;}busy=true;$('#efSave').prop('disabled',true);$('#efWarning').removeClass('ef-warning-error').text(reason==='Create PO'?'Preparing PO creation…':'Saving follow-up…');try{if(reason==='Not Interested'){const answer=await Swal.fire({title:'Mark selected items Not Interested?',text:ids.length+' enquiry item(s) will be closed.',icon:'warning',showCancelButton:true});if(!answer.isConfirmed)return;}const res=await api(reason==='Create PO'?'prepare_po':'save',{ids:JSON.stringify(ids),reason,conversation,next});if(reason==='Create PO'){const url=new URL('../krf_provisional_sale_order_edit/addNewProvisionalsaleorder.php',base);url.searchParams.set('enquiry_token',res.data.token);url.searchParams.set('k',key);url.searchParams.set('iframe','true');location.href=url.href;}else{busy=false;close();alertmessage('success','Enquiry follow-up saved.');load();}}catch(x){fail(x);}finally{busy=false;$('#efSave').prop('disabled',false);}});
+load();
+});

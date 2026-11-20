@@ -1,0 +1,68 @@
+# ==========================================================
+#  Karjee Farms / krf_amanaccounting - git ignore rules
+# ==========================================================
+
+# ---------- Secrets & environment config (NEVER commit) ----------
+# Database connection files (any folder, any variant: connection-old.php, "connection - demo.php", ...)
+connection*.php
+# ...but keep the templates so a fresh clone knows what to create
+!connection.example.php
+!**/connection.example.php
+
+# SMTP password
+mail_config.php
+
+# Keys, certificates, env files
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+.env
+.env.*
+*.ini
+.htpasswd
+
+# ---------- Database dumps & backups ----------
+# (small schema/migration .sql scripts inside modules ARE committed)
+**/temp/dumps/
+*dump*.sql
+Dump*/
+*.sql.gz
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+*.bak
+*.filepart
+
+# ---------- User uploads & generated files (runtime data, not code) ----------
+attachementfile/
+**/attachementfile/
+**/uploads/
+**/UploadedAttendanceSheet/
+sync_reconstruct/sourcefile/
+**/tcpdf/cache/*
+!**/tcpdf/cache/.gitkeep
+
+# ---------- Logs, debug output, temp ----------
+*.log
+error_log
+**/logs/
+curl_output.txt
+tmp/
+
+# ---------- Editor / OS / tooling ----------
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+brain/
+node_modules/
+
+# ---------- One-off debug scripts containing credentials ----------
+readytoload/test_query.php

@@ -1,0 +1,419 @@
+/* ==========================================================================
+   Post-Dispatch Residual Polyhouse Stock Tracker - Stylesheet
+   ========================================================================== */
+
+/* Select2 custom adjustments */
+.select2-container--bootstrap-5 .select2-selection,
+.select2-container--default .select2-selection--single {
+    height: 38px !important;
+    border: 1px solid #ced4da !important;
+    border-radius: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: 36px !important;
+    color: #212529 !important;
+    font-weight: 500 !important;
+    font-size: 13px !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 36px !important;
+}
+
+.select2-dropdown {
+    font-size: 13px !important;
+    border-radius: 6px !important;
+    border: 1px solid #ced4da !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+}
+
+.select2-search__field {
+    border-radius: 4px !important;
+    padding: 6px 10px !important;
+}
+
+/* Table Header styling */
+#surplusTableHead th {
+    background-color: #0d9488 !important;
+    color: white !important;
+    text-align: left;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 12.5px;
+    letter-spacing: 0.5px;
+    vertical-align: middle;
+    border: none !important;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+#surplusStockTable {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 1280px;
+    margin-bottom: 0;
+}
+
+#surplusStockTable td {
+    vertical-align: middle;
+    font-size: 13px;
+    padding: 10px 10px;
+}
+
+.surplus-table-responsive {
+    max-height: 620px;
+    overflow-y: auto;
+    overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    scrollbar-width: thin;
+    scrollbar-color: #0d9488 #f1f3f5;
+}
+
+.surplus-table-responsive::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.surplus-table-responsive::-webkit-scrollbar-thumb {
+    background-color: #0d9488;
+    border-radius: 4px;
+}
+
+.surplus-table-responsive::-webkit-scrollbar-track {
+    background: #f1f3f5;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(13, 148, 136, 0.05) !important;
+}
+
+/* Week navigator buttons */
+#surplusPrevWeekBtn {
+    background-color: #f3a614 !important;
+    color: black !important;
+    border: none;
+    padding: 8px 16px;
+    font-weight: 600;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+}
+
+#surplusPrevWeekBtn:hover {
+    background-color: #d9910d !important;
+}
+
+#surplusNextWeekBtn {
+    background-color: #0c8c5e !important;
+    color: white !important;
+    border: none;
+    padding: 8px 16px;
+    font-weight: 600;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+}
+
+#surplusNextWeekBtn:hover {
+    background-color: #096d49 !important;
+}
+
+/* Select controls */
+.form-control, .form-select {
+    border-radius: 6px;
+    border: 1px solid #ced4da;
+    padding: 8px 12px;
+    font-weight: 500;
+}
+
+/* Summary Card Base Styles */
+.surplus-kpi-card {
+    border-radius: 12px;
+    padding: 14px 18px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 2px solid transparent;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    position: relative;
+    overflow: hidden;
+    user-select: none;
+    height: 100%;
+}
+
+.surplus-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+}
+
+.surplus-kpi-card .card-kpi-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 2px;
+    display: block;
+}
+
+.surplus-kpi-card .card-kpi-value {
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.surplus-kpi-card .card-kpi-sub {
+    font-size: 11.5px;
+    font-weight: 500;
+    margin-top: 2px;
+    display: block;
+}
+
+.surplus-kpi-card .card-kpi-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+}
+
+/* Card Themes */
+.surplus-kpi-card.card-batches {
+    background-color: #eff6ff;
+    border-color: #bfdbfe;
+}
+.surplus-kpi-card.card-batches .card-kpi-title { color: #1e40af; }
+.surplus-kpi-card.card-batches .card-kpi-value { color: #1d4ed8; }
+.surplus-kpi-card.card-batches .card-kpi-sub { color: #3b82f6; }
+.surplus-kpi-card.card-batches .card-kpi-icon {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+
+.surplus-kpi-card.card-sowing {
+    background-color: #fffbeb;
+    border-color: #fde68a;
+}
+.surplus-kpi-card.card-sowing .card-kpi-title { color: #92400e; }
+.surplus-kpi-card.card-sowing .card-kpi-value { color: #b45309; }
+.surplus-kpi-card.card-sowing .card-kpi-sub { color: #d97706; }
+.surplus-kpi-card.card-sowing .card-kpi-icon {
+    background-color: #fef3c7;
+    color: #b45309;
+}
+
+.surplus-kpi-card.card-dispatched {
+    background-color: #f8fafc;
+    border-color: #e2e8f0;
+}
+.surplus-kpi-card.card-dispatched .card-kpi-title { color: #334155; }
+.surplus-kpi-card.card-dispatched .card-kpi-value { color: #0f172a; }
+.surplus-kpi-card.card-dispatched .card-kpi-sub { color: #64748b; }
+.surplus-kpi-card.card-dispatched .card-kpi-icon {
+    background-color: #e2e8f0;
+    color: #334155;
+}
+
+.surplus-kpi-card.card-surplus {
+    background-color: #ecfdf5;
+    border-color: #a7f3d0;
+    box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.25);
+}
+.surplus-kpi-card.card-surplus .card-kpi-title { color: #065f46; }
+.surplus-kpi-card.card-surplus .card-kpi-value { color: #047857; }
+.surplus-kpi-card.card-surplus .card-kpi-sub { color: #059669; }
+.surplus-kpi-card.card-surplus .card-kpi-icon {
+    background-color: #d1fae5;
+    color: #047857;
+}
+
+/* Filter Applied Highlight */
+.filter-applied,
+.filter-applied .select2-selection,
+.select2-container.filter-applied .select2-selection,
+.form-select.filter-applied {
+    background-color: #e8f5e9 !important;
+    border-color: #0c8c5e !important;
+    color: #065f46 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 0 0 0.15rem rgba(12, 140, 94, 0.18) !important;
+}
+
+.select2-container.filter-applied .select2-selection__rendered {
+    color: #065f46 !important;
+    font-weight: 600 !important;
+}
+
+.input-group.filter-applied {
+    box-shadow: 0 0 0 0.15rem rgba(12, 140, 94, 0.18) !important;
+    border-radius: 6px;
+}
+
+.input-group.filter-applied .form-control,
+.input-group.filter-applied .input-group-text {
+    background-color: #e8f5e9 !important;
+    border-color: #0c8c5e !important;
+    color: #065f46 !important;
+    font-weight: 600 !important;
+}
+
+/* Print Styles for A4 Landscape */
+@page {
+    size: A4 landscape;
+    margin: 6mm 6mm 6mm 6mm;
+}
+
+@media print {
+    html, body {
+        width: 100% !important;
+        height: auto !important;
+        background: #ffffff !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    body * {
+        visibility: hidden !important;
+    }
+    #surplusPdfPrintableDocument, #surplusPdfPrintableDocument * {
+        visibility: visible !important;
+    }
+    #surplusPdfPrintableDocument {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        background: white !important;
+    }
+    table {
+        page-break-inside: auto !important;
+    }
+    thead {
+        display: table-header-group !important;
+    }
+    tr {
+        page-break-inside: avoid !important;
+        page-break-after: auto !important;
+    }
+}
+
+/* ==========================================================================
+   Column Popup Badges & Modal Styling
+   ========================================================================== */
+.btn-col-popup {
+    cursor: pointer !important;
+    user-select: none;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    display: inline-block;
+    position: relative;
+    border-width: 1.5px !important;
+}
+
+.btn-col-popup:hover {
+    transform: translateY(-2px) scale(1.04);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12) !important;
+    filter: brightness(0.97);
+}
+
+.btn-col-popup:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* Specific Column hover highlights */
+.btn-col-popup[data-col="sowing"]:hover {
+    border-color: #10b981 !important;
+    color: #047857 !important;
+    background-color: #f0fdf4 !important;
+}
+
+.btn-col-popup[data-col="ready"]:hover {
+    border-color: #0284c7 !important;
+    color: #0369a1 !important;
+    background-color: #e0f2fe !important;
+}
+
+.btn-col-popup[data-col="allocated"]:hover {
+    border-color: #7c3aed !important;
+    color: #6d28d9 !important;
+    background-color: #ede9fe !important;
+}
+
+.btn-col-popup[data-col="dispatched"]:hover {
+    border-color: #334155 !important;
+    color: #0f172a !important;
+    background-color: #e2e8f0 !important;
+}
+
+/* Pill Navigation within Popup */
+#columnDetailTabs .nav-link {
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 13.5px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    border: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+    color: #334155 !important;
+}
+
+#columnDetailTabs .nav-link:hover {
+    background-color: #e2e8f0;
+    color: #0f172a !important;
+}
+
+#columnDetailTabs .nav-link.active {
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15) !important;
+    color: #ffffff !important;
+}
+
+#columnDetailTabs #tab-sowing-btn.active {
+    background-color: #059669 !important;
+    border-color: #059669 !important;
+    color: #ffffff !important;
+}
+#columnDetailTabs #tab-sowing-btn.active,
+#columnDetailTabs #tab-sowing-btn.active i,
+#columnDetailTabs #tab-sowing-btn.active span {
+    color: #ffffff !important;
+}
+
+#columnDetailTabs #tab-ready-btn.active {
+    background-color: #0284c7 !important;
+    border-color: #0284c7 !important;
+    color: #ffffff !important;
+}
+#columnDetailTabs #tab-ready-btn.active,
+#columnDetailTabs #tab-ready-btn.active i,
+#columnDetailTabs #tab-ready-btn.active span {
+    color: #ffffff !important;
+}
+
+#columnDetailTabs #tab-allocated-btn.active {
+    background-color: #7c3aed !important;
+    border-color: #7c3aed !important;
+    color: #ffffff !important;
+}
+#columnDetailTabs #tab-allocated-btn.active,
+#columnDetailTabs #tab-allocated-btn.active i,
+#columnDetailTabs #tab-allocated-btn.active span {
+    color: #ffffff !important;
+}
+
+#columnDetailTabs #tab-dispatched-btn.active {
+    background-color: #0f172a !important;
+    border-color: #0f172a !important;
+    color: #ffffff !important;
+}
+#columnDetailTabs #tab-dispatched-btn.active,
+#columnDetailTabs #tab-dispatched-btn.active i,
+#columnDetailTabs #tab-dispatched-btn.active span {
+    color: #ffffff !important;
+}
+

@@ -1,0 +1,144 @@
+.btn-deepblue {
+  background-color: #001B48 !important;
+  color: white !important;
+  border: 1px solid #001B48 !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  /*text-decoration: none !important;*/
+  /*display: inline-block !important;*/
+  /*transition: all 0.3s ease !important;*/
+  /*cursor: pointer !important;*/
+}
+
+.btn-deepblue:hover {
+  background-color: white !important;
+  color: #001B48 !important;
+}
+
+.btn-deepwhite {
+  background-color: white; !important;
+  color: #001B48 !important;
+  border: 1px solid #001B48 !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  /*text-decoration: none !important;*/
+  /*display: inline-block;*/
+  /*transition: all 0.3s ease !important;*/
+  /*cursor: pointer !important;*/
+}
+
+.btn-deepwhite:hover {
+  background-color: #001B48 !important;
+  color: white !important;
+}
+.bg-info-light{
+    background-color: #bde3e9 !important;
+    color: black;
+}
+
+.bg-deepblue{
+    background-color: #001B48 !important;
+    color: white !important;
+}
+
+input[type="radio"] {
+      -ms-transform: scale(2);
+      -webkit-transform: scale(2); 
+      transform: scale(2);
+      margin: 0px 8px;
+    }
+    .btn-attach input {
+        flex: 1;
+    }
+
+    .hide {
+        display: none;
+    }
+
+    input[type="checkbox"] {
+      -ms-transform: scale(2);
+      -webkit-transform: scale(2); 
+      transform: scale(2);
+      margin: 0px 8px;
+    }
+
+   
+    .sidebar {
+      width: 100%;
+      background-color: #f8f9fa;
+      padding: 1rem;
+    }
+
+    .accordion-body .btn, .ungroupbtn{
+      background-color: #17A2B8; /* Header background */
+      color: #ffffff;            /* Header text color */
+      font-weight: bold;
+      text-transform: uppercase;
+      border: none;
+      padding: 10px 15px;
+    }
+    .accordion-button::after {
+      transition: transform 0.2s;
+    }
+    .accordion-button:not(.collapsed)::after {
+      transform: rotate(90deg);
+    }
+
+
+    /* Whole accordion item background */
+    .accordion-item {
+      background-color: #ffffff; /* outer box bg */
+      border: 1px solid #001B48;
+      border-radius: 5px;
+      margin-bottom: 10px;
+    }
+
+    /* Accordion Header (Button) */
+    .accordion-button {
+      background-color: #001B48; /* Header background */
+      color: #ffffff;            /* Header text color */
+      font-weight: bold;
+      text-transform: uppercase;
+      border: none;
+      padding: 10px 15px;
+    }
+
+    .accordion-button:focus {
+      box-shadow: none;
+      outline: none;
+    }
+
+    /* When header is expanded */
+    .accordion-button:not(.collapsed) {
+      background-color: #005e97; /* Open header background */
+      color: #ffffff;            /* Open header text */
+    }
+
+    /* Accordion Body */
+    .accordion-body {
+      background-color: #e5f5ff; /* Body background */
+      color: #333333;            /* Body text color */
+      padding: 10px 15px;
+    }
+
+    /* Optional: Add custom hover effect on header */
+    .accordion-button:hover {
+      background-color: #003366;
+      color: #F5F5F3;
+    }
+
+    /* Optional: Remove default Bootstrap caret icon */
+    .accordion-button::after {
+      display: none;
+    }
+
+    /* Optional: Add custom +/- icon */
+    .accordion-button::before {
+      content: "+";
+      font-size: 1.5em;
+      margin-right: 10px;
+    }
+
+    .accordion-button:not(.collapsed)::before {
+      content: "-";
+    }

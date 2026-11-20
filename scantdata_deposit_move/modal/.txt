@@ -1,0 +1,261 @@
+function reconstructbook_FromHistoryDataAuto($mconn, $companyid, $subcompanyid, $projectid, $loginid) {
+    $freturns = [];
+    $subprojectid = "";
+    $request_no = "";
+    $approvedby = $loginid;
+    $transaction_type = "Online";
+    $beneficierie = "Individual";
+    $reconciliation = "Done";
+    $reconcilation_process = "bookfromhistoryautomatic";
+    $book_source = "closetobook";
+    $book_status = "completed";
+    $requesteddate = date('Y-m-d');
+    $requestedby = $loginid;
+
+    $clbook = closetobookdetails($mconn, $companyid, $subcompanyid, $projectid, "", "unreconstruct_withprojectid", "");
+
+    if (count($clbook) > 0) {
+        foreach ($clbook as $clbookkey) {
+            $banksno = $clbookkey['sno'];
+            $accountid = $clbookkey['account_id'];
+            $accountno = $clbookkey['accountno'];
+            $value_date = $clbookkey['value_date'];
+            $bookdate = $value_date;
+            $transfered_amount = $clbookkey['total_amount'] ?? 0;
+            $book_amount = $clbookkey['total_amount'] ?? 0;
+            $bankdescription = $clbookkey['description_bank'] ?? '';
+            $transactionno = $clbookkey['chequeno'] ?? '';
+            $transaction_date = $value_date;
+
+            $checkQuery = $mconn->query("SELECT * FROM tbl_reconstructedhistory 
+                WHERE companyid = '$companyid' AND subcompanyid = '$subcompanyid' 
+                AND projectid = '$projectid' AND accountid = '$accountid' 
+                AND lcase(bankdescription) = '".addslashes(strtolower(trim($bankdescription)))."' and paytoid<>'' and  purposecode<>''ORDER BY sno DESC LIMIT 1");
+
+            if ($checkQuery && $checkQuery->num_rows > 0) {
+                $row = $checkQuery->fetch_assoc();
+                $paytoid = $row['paytoid'];
+                $purposecode = $row['purposecode'];
+                $textremark = $row['description'];
+
+                // Get bank/account info
+                $bankres = $mconn->query("SELECT * FROM tbl_master_account WHERE accountid = '$accountid'");
+				if ($bankres && $bankres->num_rows > 0) {
+				    $bankinfo = $bankres->fetch_assoc();
+	                $bankid = $bankinfo['bankid'] ?? '';
+	                $bankname = $bankinfo['bankname'] ?? '';
+	                $account_type = $bankinfo['account_type'] ?? '';
+	                $accountname = $bankinfo['accountname'] ?? '';
+	            }
+
+                // Purpose info
+                $purpose = $purposecategory = $categoryid = $sub_categoryid = $sub_category = "";
+                $pc = getpurposenamewithcat($mconn, $companyid, $subcompanyid, $projectid, 'purposecode', $purposecode);
+                if (!empty($pc)) {
+                    $purpose = $pc[0]['purpose'];
+                    $purposecode = $pc[0]['purposecode'];
+                    $purposecategory = $pc[0]['pcategory'];
+                    $categoryid = $pc[0]['pcategorycode'];
+                    $sub_categoryid = $pc[0]['psub_categoryid'];
+                    $sub_category = $pc[0]['psub_category'];
+                }
+
+                // Payee details
+                $paytoname = $beneficiaryname = $paytoaccountno = $paytobankname = $paytoifsc = $paytoaccountid = "";
+                $is_intermediate_transfer = "";
+
+                if (in_array(intval($categoryid), [2, 3, 5, 6, 7, 8]) && !empty($paytoid)) {
+                    $acqry = "SELECT * FROM tbl_master_account 
+                              WHERE cmp_id = '$companyid' 
+                              AND subcmp_id IN ('" . str_replace(",", "','", $subcompanyid) . "') 
+                              AND projectid IN ('" . str_replace(",", "','", $projectid) . "') 
+                              AND paytoid = '$paytoid'";
+                    $acres = $mconn->query($acqry);
+                    if ($acres->num_rows > 0) {
+                        $pkey = $acres->fetch_assoc();
+                        $paytoname = $pkey['accountname'];
+                        $beneficiaryname = $pkey['accountname'];
+                        $paytoaccountno = $pkey['accountno'];
+                        $paytobankname = $pkey['bankname'];
+                        $paytoifsc = $pkey['ifsccode'];
+                        $paytoaccountid = $pkey['accountid'];
+                        $is_intermediate_transfer = "yes";
+                    } else {
+                        $freturns[] = ['status' => 'Error', 'message' => 'Payee details not found in master table.', 'sno' => $banksno];
+                        continue;
+                    }
+                } else {
+                    $prpin = getpaytoinfo($mconn, $companyid, $subcompanyid, 'paytoid', $paytoid);
+                    if (!empty($prpin)) {
+                        $paytoname = $prpin[0]['paytoname'];
+                        $beneficiaryname = $prpin[0]['paytoname'];
+                        $paytoaccountno = $prpin[0]['accountno'];
+                        $paytobankname = $prpin[0]['bankname'];
+                        $paytoifsc = $prpin[0]['ifsccode'];
+                    }
+                }
+
+                if (!empty($paytoid) && !empty($purposecode)) {
+                    $finyeartype = getprojectdetails($mconn, $companyid, $subcompanyid, "projectid", $projectid)[0]['finyr'];
+                    $financialYear = getFinancialYear($value_date, $finyeartype);
+                    $tsno = GetMaxRefTempSno($mconn);
+                    $newreference_no = getnewreferenceno($mconn, $companyid, $subcompanyid, $projectid, $accountno);
+
+                    $mconn->begin_transaction();
+                    try {
+                        $mconn->query("INSERT INTO tbl_maintransaction_breakdown (companyid, subcompanyid, projectid, reference_no, beneficiary_name, amount, 
+			                        purpose_categoryid, purpose_category, purpose_subcategoryid, purpose_subcategory, purpose, purpose_code, description, description_bank) VALUES ('$companyid', '$subcompanyid', '$projectid', '$newreference_no', '$beneficiaryname', '$transfered_amount', '$categoryid', '$purposecategory', '$sub_categoryid', '$sub_category','$purpose', '$purposecode', '$textremark', '$bankdescription')");
+
+                        $mconn->query("INSERT INTO tbl_maintransaction (tsno, companyid, subcompanyid, projectid, subprojectid, finyear, request_no, reference_no, approvedby, bookdate, book_amount, transactionno, transaction_date, transaction_type, transfered_amount, beforeedit_amount, payto, paytoid, paytoaccountno, paytobankname, paytoifsc, paytoaccountid, is_intermediate_transfer, payfrombankname, payfromaccountno, payfromaccountid, payfrombankid, paymenttype, beneficierie, reconciliation, reconciliation_banksno, reconcilation_process, value_date, book_source, book_status, requesteddate, requestedby) VALUES ('$tsno', '$companyid', '$subcompanyid', '$projectid', '$subprojectid', '$financialYear', '$request_no', '$newreference_no', '$approvedby', '$bookdate', '$book_amount', '$transactionno', '$transaction_date', '$transaction_type', '$transfered_amount', '$transfered_amount', '$paytoname', '$paytoid', '$paytoaccountno', '$paytobankname', '$paytoifsc', '$paytoaccountid', '$is_intermediate_transfer', '$bankname', '$accountno', '$accountid', '$bankid', '$paymenttype', '$beneficierie', '$reconciliation', '$reconciliation_banksno', '$reconcilation_process', '$value_date', '$book_source', '$book_status', '$requesteddate', '$requestedby')");
+                        $mconn->query("UPDATE tbl_closetobook SET reconciliation='Done', book_status='completed', 
+                            actule_referenceno='$newreference_no', reference_no='$newreference_no', 
+                            reconstructstatus='automaticfromhistory-" . date('Y-m-d H:i:s') . "' WHERE sno='$banksno'");
+                        $mconn->commit();
+                        $freturns[] = ['status' => 'Success', 'sno' => $banksno, 'refno' => $newreference_no];
+                    } catch (Exception $e) {
+                        $mconn->rollback();
+                        $freturns[] = ['status' => 'Error', 'sno' => $banksno, 'message' => $e->getMessage()];
+                    }
+                } else {
+                    $freturns[] = ['status' => 'Error', 'sno' => $banksno, 'message' => 'Missing required data (paytoid or purposecode).'];
+                }
+            }
+        }
+    } else {
+        $freturns[] = ['status' => 'Error', 'message' => 'No unreconstructed data found.'];
+    }
+
+    return $freturns;
+}
+
+function reconstructbook_FromPostPaymentDataAuto($mconn, $companyid, $subcompanyid, $projectid, $loginid) {
+    $freturns = [];
+    $subprojectid = "";
+    $request_no = "";
+    $approvedby = $loginid;
+    $transaction_type = "Online";
+    $beneficierie = "Individual";
+    $reconciliation = "Done";
+    $reconcilation_process = "bookfrompostpaymentautomatic";
+    $book_source = "closetobook";
+    $book_status = "completed";
+    $requesteddate = date('Y-m-d');
+    $requestedby = $loginid;
+
+    $clbook = closetobookdetails($mconn, $companyid, $subcompanyid, $projectid, "", "unreconstruct_withprojectid", "");
+    if (count($clbook) > 0) {
+        foreach ($clbook as $clbookkey) {
+            $banksno = $clbookkey['sno'];
+            $accountid = $clbookkey['account_id'];
+            $accountno = $clbookkey['accountno'];
+            $value_date = $clbookkey['value_date'];
+            $bookdate = $value_date;
+            $transfered_amount = $clbookkey['total_amount'] ?? 0;
+            $book_amount = $clbookkey['total_amount'] ?? 0;
+            $bankdescription = $clbookkey['description_bank'] ?? '';
+            $transactionno = $clbookkey['chequeno'] ?? '';
+            $transaction_date = $value_date;
+
+            $checkQuery = $mconn->query("SELECT sno, instructionid, instructiondate, filepath, filepath2, filepath3, requestno, payto, paytoid, requestamount, purposecode, purpose, from_accountid, description, transactiondate, transactionno, transferreceiptpath FROM tbl_paymentrequest_voiceinstruction WHERE companyid='".$companyid."' and subcompanyid='".$subcompanyid."' and projectid='".$projectid."' and requestamount='".$transfered_amount."' and transactiondate='".$value_date."' and from_accountid='".$accountid."' and paytoid<>'' and purposecode<>'' and (tedit is null or tedit='') and (requeststatus is null or requeststatus='' or requeststatus='pending') limit 1");
+            $paytoid ="";
+            $purposecode ="";
+            if ($checkQuery && $checkQuery->num_rows > 0) {
+                $row = $checkQuery->fetch_assoc();
+                $textremark = $row['description'];
+                $audiofilepath= $row['filepath'];
+                $filepath= $row['filepath2'];
+
+                // Get bank/account info
+                $bankres = $mconn->query("SELECT * FROM tbl_master_account WHERE accountid = '$accountid'");
+				if ($bankres && $bankres->num_rows > 0) {
+				    $bankinfo = $bankres->fetch_assoc();
+	                $from_accountid = $bankinfo['accountid'] ?? '';
+	                $from_bankid = $bankinfo['bankid'] ?? '';
+	                $from_bankname = $bankinfo['bankname'] ?? '';
+	                $from_account_type = $bankinfo['account_type'] ?? '';
+	                $from_accountname = $bankinfo['accountname'] ?? '';
+	                $from_accountno = $bankinfo['accountno'] ?? '';
+	            }
+
+                // Purpose info
+                $purpose = $purposecategory = $categoryid = $sub_categoryid = $sub_category = "";
+                $pc = getpurposenamewithcat($mconn, $companyid, $subcompanyid, $projectid, 'purposecode', $row['purposecode']);
+                if (!empty($pc)) {
+                    $purpose = $pc[0]['purpose'];
+                    $purposecode = $pc[0]['purposecode'];
+                    $purposecategory = $pc[0]['pcategory'];
+                    $categoryid = $pc[0]['pcategorycode'];
+                    $sub_categoryid = $pc[0]['psub_categoryid'];
+                    $sub_category = $pc[0]['psub_category'];
+                }
+
+                // Payee details
+                $paytoname = $beneficiaryname = $paytoaccountno = $paytobankname = $paytoifsc = $paytoaccountid = "";
+                $is_intermediate_transfer = "";
+
+                if (in_array(intval($categoryid), [2, 3, 5, 6, 7, 8]) && !empty($row['paytoid'])) {
+                    $acqry = "SELECT * FROM tbl_master_account 
+                              WHERE cmp_id = '$companyid' 
+                              AND subcmp_id IN ('" . str_replace(",", "','", $subcompanyid) . "') 
+                              AND projectid IN ('" . str_replace(",", "','", $projectid) . "') 
+                              AND paytoid = '".$row['paytoid']."'";
+                    $acres = $mconn->query($acqry);
+                    if ($acres->num_rows > 0) {
+                        $pkey = $acres->fetch_assoc();
+                        $paytoid = $pkey['paytoid'];
+                        $paytoname = $pkey['accountname'];
+                        $beneficiaryname = $pkey['accountname'];
+                        $paytoaccountno = $pkey['accountno'];
+                        $paytobankname = $pkey['bankname'];
+                        $paytoifsc = $pkey['ifsccode'];
+                        $paytoaccountid = $pkey['accountid'];
+                        $is_intermediate_transfer = "yes";
+                    } else {
+                        $freturns[] = ['status' => 'Error', 'message' => 'Payee details not found in master table.', 'sno' => $banksno];
+                        continue;
+                    }
+                } else {
+                    $prpin = getpaytoinfo($mconn, $companyid, $subcompanyid, 'paytoid', $row['paytoid']);
+                    if (!empty($prpin)) {
+                        $paytoid = $prpin[0]['paytoid'];
+                        $paytoname = $prpin[0]['paytoname'];
+                        $beneficiaryname = $prpin[0]['paytoname'];
+                        $paytoaccountno = $prpin[0]['accountno'];
+                        $paytobankname = $prpin[0]['bankname'];
+                        $paytoifsc = $prpin[0]['ifsccode'];
+                    }
+                }
+
+                if (!empty($paytoid) && !empty($purposecode)) {
+                    $finyeartype = getprojectdetails($mconn, $companyid, $subcompanyid, "projectid", $projectid)[0]['finyr'];
+                    $financialYear = getFinancialYear($value_date, $finyeartype);
+                    $tsno = GetMaxRefTempSno($mconn);
+                    $newreference_no = getnewreferenceno($mconn, $companyid, $subcompanyid, $projectid, $accountno);
+
+                    $mconn->begin_transaction();
+                    try {
+                        $mconn->query("INSERT INTO tbl_maintransaction_breakdown (companyid, subcompanyid, projectid, reference_no, beneficiary_name, amount, 
+			                        purpose_categoryid, purpose_category, purpose_subcategoryid, purpose_subcategory, purpose, purpose_code, description, description_bank) VALUES ('$companyid', '$subcompanyid', '$projectid', '$newreference_no', '$beneficiaryname', '$transfered_amount', '$categoryid', '$purposecategory', '$sub_categoryid', '$sub_category','$purpose', '$purposecode', '$textremark', '$bankdescription')");
+
+                        $mconn->query("INSERT INTO tbl_maintransaction (tsno, companyid, subcompanyid, projectid, subprojectid, finyear, request_no, reference_no, approvedby, bookdate, book_amount, transactionno, transaction_date, transaction_type, transfered_amount, beforeedit_amount, payto, paytoid, paytoaccountno, paytobankname, paytoifsc, paytoaccountid, is_intermediate_transfer, payfrombankname, payfromaccountno, payfromaccountid, payfrombankid, paymenttype, beneficierie, reconciliation, reconciliation_banksno, reconcilation_process, value_date, book_source, book_status, requesteddate, requestedby) VALUES ('$tsno', '$companyid', '$subcompanyid', '$projectid', '$subprojectid', '$financialYear', '$request_no', '$newreference_no', '$approvedby', '$bookdate', '$book_amount', '$transactionno', '$transaction_date', '$transaction_type', '$transfered_amount', '$transfered_amount', '$paytoname', '$paytoid', '$paytoaccountno', '$paytobankname', '$paytoifsc', '$paytoaccountid', '$is_intermediate_transfer', '$from_bankname', '$from_accountno', '$from_accountid', '$from_bankid', '$paymenttype', '$beneficierie', '$reconciliation', '$reconciliation_banksno', '$reconcilation_process', '$value_date', '$book_source', '$book_status', '$requesteddate', '$requestedby')");
+                        $mconn->query("UPDATE tbl_closetobook SET reconciliation='Done', book_status='completed', 
+                            actule_referenceno='$newreference_no', reference_no='$newreference_no', 
+                            reconstructstatus='automaticfromhistory-" . date('Y-m-d H:i:s') . "' WHERE sno='$banksno'");
+                        $mconn->query("UPDATE tbl_paymentrequest_voiceinstruction SET requeststatus='Book Constructed & Reconcilation'  WHERE sno='".$row['sno']."'");
+                        $mconn->commit();
+                        $freturns[] = ['status' => 'Success', 'sno' => $banksno, 'refno' => $newreference_no];
+                    } catch (Exception $e) {
+                        $mconn->rollback();
+                        $freturns[] = ['status' => 'Error', 'sno' => $banksno, 'message' => $e->getMessage()];
+                    }
+                } else {
+                    $freturns[] = ['status' => 'Error', 'sno' => $banksno, 'message' => 'Missing required data (paytoid or purposecode).'];
+                }	            
+            }
+        }
+    } else {
+        $freturns[] = ['status' => 'Error', 'message' => 'No unreconstructed data found.'];
+    }
+
+    return $freturns;
+}

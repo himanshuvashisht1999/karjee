@@ -1,0 +1,6 @@
+.required-label::after {
+    content: " *";        /* Add an asterisk */
+    color: red;           /* Set the color to red */
+    font-weight: bold;    /* Make it bold for emphasis */
+    font-size: x-large;
+}

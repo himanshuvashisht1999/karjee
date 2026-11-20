@@ -1,0 +1,20 @@
+
+======USAGE EXAMPLES=======
+<?php
+include "pdfoverlay.php";
+overlay("sampleinput.pdf","overlayedoutput.pdf","THIS TEXT APPEARS AS OVERLAY IN PDF","TOP_LEFT");
+overlay("sampleinput.pdf","overlayedoutput.pdf","THIS TEXT APPEARS AS OVERLAY IN PDF","TOP_MIDDLE");
+overlay("sampleinput.pdf","overlayedoutput.pdf","THIS TEXT APPEARS AS OVERLAY IN PDF","TOP_RIGHT");
+overlay("sampleinput.pdf","overlayedoutput.pdf","THIS TEXT APPEARS AS OVERLAY IN PDF","BOTTOM_LEFT");
+overlay("sampleinput.pdf","overlayedoutput.pdf","THIS TEXT APPEARS AS OVERLAY IN PDF","BOTTOM_MIDDLE");
+overlay("sampleinput.pdf","overlayedoutput.pdf","THIS TEXT APPEARS AS OVERLAY IN PDF","BOTTOM_RIGHT");
+?>
+
+<?php
+include 'imagetopdf.php';
+$imagepath = "imgexp.jpg";
+$outputpdfpath = "example_imagetopdf1.pdf";
+convert_image_to_pdf($imagepath,$outputpdfpath);
+?>
+===========================
+

@@ -1,0 +1,64 @@
+.nscroll::-webkit-scrollbar {
+    width: 4px;
+    height: 8px;
+    background-color: white;
+}
+
+.nscroll{
+  scrollbar-width: thin;
+}
+
+.nscroll_lightblue{
+  scrollbar-color: lightblue;
+  scrollbar-width: thin;
+}
+
+.nscroll_lightblue::-webkit-scrollbar-thumb {
+    background: lightblue;
+    border-radius: 5px;
+}
+
+.nscroll_lightgrey{
+  scrollbar-color: lightgrey;
+}
+
+.nscroll_lightgrey::-webkit-scrollbar-thumb {
+    background: lightgrey;
+    border-radius: 5px;
+}
+
+.nscroll_green{
+  scrollbar-color: green;
+}
+
+.nscroll_grey::-webkit-scrollbar-thumb {
+    background: green;
+    border-radius: 5px;
+}
+
+.nscroll_deepskyblue{
+  scrollbar-color: deepskyblue;
+}
+
+.nscroll_deepskyblue::-webkit-scrollbar-thumb {
+    background: deepskyblue;
+    border-radius: 5px;
+}
+
+.nscroll_turquoise{
+  scrollbar-color: turquoise;
+}
+
+.nscroll_turquoise::-webkit-scrollbar-thumb {
+    background: turquoise;
+    border-radius: 5px;
+}
+
+.nscroll_darkturquoise{
+  scrollbar-color: darkturquoise;
+}
+
+.nscroll_darkturquoise::-webkit-scrollbar-thumb {
+    background: darkturquoise;
+    border-radius: 5px;
+}

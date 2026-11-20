@@ -1,0 +1,52 @@
+summary::-webkit-details-marker {
+	display: none
+}
+summary:after {
+	border-radius: 5px;
+	float:right;
+	font-size: 2.25em;
+	vertical-align:middle;
+	content: "+";
+	font-weight: 400;
+}
+details[open] summary:after {
+	content: "-";
+}
+details[open] summary {
+	background-color: green;
+	color:white;
+}		
+details > summary {
+	list-style: none;
+	padding: 0px 8px;
+	background-color: lavenderBlush;
+	font-size: 1.25rem;
+	text-transform: uppercase;
+	font-weight :700;
+	border: none;
+	cursor: pointer;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+details > summary:focus {
+	outline: none;
+}
+
+details > summary:hover {
+	background-color: lightgrey;
+	color:blue;
+}
+
+details[open] > summary:hover {
+	background-color: green;
+	color:white;
+}
+
+details{
+	margin: 10px;
+	border: 1px solid #000;
+}
+
+

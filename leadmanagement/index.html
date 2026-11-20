@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lead Management Dashboard</title>
+    <meta name="description" content="Smart, fully‑responsive lead management system dashboard" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="assets/css/style.css" />
+    <script>
+        // Redirect to the active php dashboard
+        window.location.href = "index.php";
+    </script>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <i class="fa-solid fa-people-roof"></i>
+            <span>Lead Management</span>
+        </div>
+        <input type="search" id="leadSearchInput" placeholder="Search leads in real-time..." class="search-bar" />
+        <div class="right-section">
+            <a href="../admin_dashboard.php" class="back-link">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                <span>Exit Console</span>
+            </a>
+            <div class="user-avatar">
+                <i class="fa-regular fa-user"></i>
+            </div>
+        </div>
+    </header>
+    <nav class="sidebar">
+        <ul>
+            <li class="active">
+                <a href="index.php">
+                    <i class="fa-solid fa-chart-pie"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+            <li>
+                <a href="register.php">
+                    <i class="fa-solid fa-user-plus"></i>
+                    <span>New Lead</span>
+                </a>
+            </li>
+            <li>
+                <a href="#">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>Settings</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+    <main class="main-content">
+        <h2><i class="fa-solid fa-gauge text-primary"></i> Live Lead Statistics</h2>
+        <section class="stats-cards">
+            <div class="card" id="card-today"><h3>Leads Today</h3><p>0</p></div>
+            <div class="card" id="card-total"><h3>Total Leads</h3><p>0</p></div>
+            <div class="card" id="card-conversions"><h3>Conversions</h3><p>0%</p></div>
+        </section>
+        <section class="leads-table">
+            <h2><i class="fa-solid fa-list-check text-primary"></i> Active Leads List</h2>
+            <div class="leads-table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Contact</th>
+                            <th>State</th>
+                            <th>District</th>
+                            <th>City/Village</th>
+                            <th>Product</th>
+                            <th>Quantity</th>
+                            <th>Remark</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leads-body">
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+    <script src="assets/js/dashboard.js"></script>
+</body>
+</html>

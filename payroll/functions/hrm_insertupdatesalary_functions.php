@@ -2281,4 +2281,73 @@ function saveAttendanceLocationExemption($conn,$ProjectID,$EmployeeID,$LocationI
     ];
 }
 
+/**
+ * Change an employee's monthly salary (the "Net Salary" shown in the Employee List =
+ * Basic + HRA + Conveyance + Special) from the list / work-details page.
+ * Keeps the employee's current structure, same rules as the Salary page:
+ *  - Basic keeps its current share of the total
+ *  - HRA keeps its current % of Basic
+ *  - Conveyance keeps its current fixed amount (capped by what is left)
+ *  - Special Allowance takes the balance
+ * Gross = CTC = new monthly amount, CTCY = amount x 12. Updates the active salary row in place
+ * (like the Salary page save). Already calculated months are not touched.
+ */
+function updateEmployeeMonthlySalaryAmount($hrmconn, $companyid, $subcompanyid, $projectid, $employeeid, $newAmount, $updatedBy = '')
+{
+    $newAmount = round((float)$newAmount, 2);
+    if ($newAmount <= 0) {
+        return ['status' => 'error', 'message' => 'Net Salary must be greater than 0.'];
+    }
+    if ($newAmount > 10000000) {
+        return ['status' => 'error', 'message' => 'Net Salary looks too large. Please check the amount.'];
+    }
+
+    $st = $hrmconn->prepare("SELECT SalaryID, BasicSalary, HRA, ConveyanceAllowance, SpecialAllowance FROM hrm_EmployeeSalary
+        WHERE EmployeeID = ? AND projectid = ?
+        ORDER BY (validtilldate IS NULL OR validtilldate = '' OR validtilldate = '0000-00-00') DESC, SalaryID DESC LIMIT 1");
+    if (!$st) return ['status' => 'error', 'message' => 'Prepare failed: ' . $hrmconn->error];
+    $st->bind_param("is", $employeeid, $projectid);
+    $st->execute();
+    $row = $st->get_result()->fetch_assoc();
+    $st->close();
+
+    if (!$row) {
+        return ['status' => 'error', 'message' => 'No salary structure found for this employee. Please set it up once on the Salary page.'];
+    }
+
+    $oB = (float)$row['BasicSalary'];
+    $oH = (float)$row['HRA'];
+    $oC = (float)$row['ConveyanceAllowance'];
+    $oS = (float)$row['SpecialAllowance'];
+    $oSum = $oB + $oH + $oC + $oS;
+
+    if ($oSum <= 0 || $oB <= 0) {
+        $b = $newAmount; $h = 0; $c = 0; $s = 0;               // nothing to keep -> all Basic
+    } else {
+        $b = round($newAmount * ($oB / $oSum), 2);
+        $h = round($b * ($oH / $oB), 2);
+        $c = round(min($oC, max(0, $newAmount - $b - $h)), 2);
+        $s = round($newAmount - $b - $h - $c, 2);               // balance
+        if ($s < 0) { $b = round($b + $s, 2); $s = 0; }          // rounding safety
+    }
+    $ctcy = round($newAmount * 12, 2);
+
+    $up = $hrmconn->prepare("UPDATE hrm_EmployeeSalary SET CTCY = ?, CTC = ?, GrossSalary = ?, BasicSalary = ?, HRA = ?, ConveyanceAllowance = ?, SpecialAllowance = ?, NetSalary = ?, update_by = ?, updated_at = NOW()
+        WHERE SalaryID = ?");
+    if (!$up) return ['status' => 'error', 'message' => 'Prepare failed: ' . $hrmconn->error];
+    $sid = (int)$row['SalaryID'];
+    $up->bind_param("ddddddddsi", $ctcy, $newAmount, $newAmount, $b, $h, $c, $s, $newAmount, $updatedBy, $sid);
+    $ok = $up->execute();
+    $err = $up->error;
+    $up->close();
+    if (!$ok) return ['status' => 'error', 'message' => 'Salary update failed: ' . $err];
+
+    return [
+        'status' => 'success',
+        'message' => 'Salary updated.',
+        'value' => $newAmount,
+        'breakup' => ['BasicSalary' => $b, 'HRA' => $h, 'ConveyanceAllowance' => $c, 'SpecialAllowance' => $s, 'GrossSalary' => $newAmount, 'NetSalary' => $newAmount, 'CTCY' => $ctcy]
+    ];
+}
+
 ?>

@@ -3,6 +3,50 @@ include('header.php');
 if($loginroleid==0 || $loginroleid<=2){
 
 ?>
+<style>
+	/* ---- Employee List table: compact rows + clear grid ---- */
+	/* Table scrolls inside its own box so the header row stays visible (sticky) */
+	.emp-table-scroll {
+		max-height: calc(100vh - 170px); overflow: auto;
+		border: 1px solid #cfd6de; border-radius: 6px; margin: 0 8px 8px;
+	}
+	#emplistPayrolltbl {
+		margin-bottom: 0 !important; width: max-content; min-width: 100%;
+		border-collapse: separate !important; border-spacing: 0; border: 0 !important;
+		font-size: 13px !important;
+	}
+	#emplistPayrolltbl th, #emplistPayrolltbl td {
+		white-space: nowrap; vertical-align: middle !important;
+		padding: 5px 10px !important; line-height: 1.35 !important;
+		border: 0 !important;
+		border-right: 1px solid #dfe4ea !important;
+		border-bottom: 1px solid #dfe4ea !important;
+	}
+	#emplistPayrolltbl tr > :last-child { border-right: 0 !important; }
+	#emplistPayrolltbl thead th {
+		position: sticky; top: 0; z-index: 3;
+		background: #1f3b57 !important; color: #fff !important;
+		font-size: 12px !important; font-weight: 600 !important; letter-spacing: .2px;
+		padding-top: 8px !important; padding-bottom: 8px !important;
+		border-right-color: #2f5170 !important; border-bottom: 2px solid #142a3f !important;
+	}
+	#emplistPayrolltbl thead th.emp-sortable { cursor: pointer; user-select: none; }
+	#emplistPayrolltbl thead th.emp-sortable:hover { background: #29496a !important; }
+	#emplistPayrolltbl thead th .emp-sort-icon { color: #fff; }
+	#emplistPayrolltbl tbody tr:nth-child(even) > td { background: #f7f9fb; }
+	#emplistPayrolltbl tbody tr:hover > td { background: #eaf3ff; }
+	#emplistPayrolltbl tbody tr.table-success > td { background: #d1f5dc !important; transition: background .3s; }
+	#emplistPayrolltbl td.emp_name strong { font-weight: 600; }
+	#emplistPayrolltbl td.emp_name img { width: 26px !important; height: 26px !important; }
+	#emplistPayrolltbl td .badge { font-size: 11px; padding: 3px 7px; }
+	#emplistPayrolltbl td .btn-sm { padding: 2px 8px; font-size: 12px; line-height: 1.4; }
+	#emplistPayrolltbl td .deletemodal { font-size: 18px !important; padding: 0 4px !important; vertical-align: middle; }
+	/* pencil icons */
+	#emplistPayrolltbl .emp-edit-icon { cursor: pointer; opacity: .35; margin-left: 6px; color: #0d6efd; font-size: 14px; transition: opacity .15s; }
+	#emplistPayrolltbl td.emp-edit-cell:hover .emp-edit-icon,
+	#emplistPayrolltbl .emp-edit-icon:focus { opacity: 1; }
+	#emplistPayrolltbl td.emp-edit-cell .emp-empty { color: #adb5bd; }
+</style>
 <div class="content">	
 	<div class="row mt-4 g-0 text-white">
 		<div class="kpi-row kpi-row-compact">
@@ -194,17 +238,26 @@ if($loginroleid==0 || $loginroleid<=2){
 				</div>
 			</div>
 				<div class="col-md-12 mt-2">
-					<div class=" table-responsive">
-						<table class="table table-bordered" id="emplistPayrolltbl" style="font-size: .8em;">
+					<div class="emp-table-scroll">
+						<table class="table" id="emplistPayrolltbl">
 							<thead class="thead-light">
 								<tr>
-									<th class="d-none">Employee Id</th>
-									<th class="d-none">Employee Name</th>
-									<th style="min-width: 280px;" class="noexport">Name</th>
-									<th>Working Location / Hours</th>
-									<th>Joining Date</th>
-									<th>Net Salary</th>
-									<th class="noexport d-none">Status</th>
+									<th class="emp-sortable text-center" data-sort="sno" title="Reset to original order">S.No<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="EmployeeID">Employee<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="FatherName">Father's Name<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="MobileNo">Mobile Number<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="DepartmentName">Department<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="DesignationName">Designation<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="LocationDisplay">Working Location<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="InTime">Working Hours<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="DateOfJoining">Joining Date<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="EpfRegId">EPF UAN<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="EsicRegId">ESIC IP No<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="BankName">Bank Name<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="AccountNumber">Account Number<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="IFSCCode">IFSC Code<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable text-end" data-sort="NetSalary">Net Salary<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
+									<th class="emp-sortable" data-sort="Status">Status<i class="ti ti-arrows-sort opacity-50 emp-sort-icon ms-1"></i></th>
 									<th class="noexport">Action</th>
 								</tr>
 							</thead>
@@ -1113,6 +1166,29 @@ document.addEventListener('DOMContentLoaded', function() {
 	</div>
 </div>
 <!-- /Delete Modal -->
+<!-- Edit one field of an employee (opened from the pencil icons in the Employee List) -->
+<div class="modal fade" id="empFieldEditModal" tabindex="-1" aria-labelledby="empFieldEditTitle" aria-hidden="true">
+	<div class="modal-dialog modal-dialog-centered">
+		<div class="modal-content">
+			<div class="modal-header">
+				<div>
+					<h5 class="modal-title mb-0" id="empFieldEditTitle">Edit</h5>
+					<small class="text-muted" id="empFieldEditWho"></small>
+				</div>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<div id="empFieldEditBody"></div>
+				<div class="small text-muted mt-2" id="empFieldEditHint"></div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+				<button type="button" class="btn btn-primary" id="empFieldEditSave"><i class="ti ti-device-floppy me-1"></i>Save</button>
+			</div>
+		</div>
+	</div>
+</div>
+
 <?php include('footer.php'); ?>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
@@ -1130,8 +1206,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 		if (Array.isArray(list)) {
 			list.forEach(function (emp) {
-				if (emp.LocationName && emp.LocationName.trim() && emp.LocationName !== "-") {
-					locSet.add(emp.LocationName.trim());
+				var ln = (typeof empLocationText === "function") ? empLocationText(emp) : (emp.LocationName || "");
+				if (ln && ln.trim() && ln !== "-") {
+					locSet.add(ln.trim());
 				}
 			});
 		}
@@ -1177,8 +1254,8 @@ document.addEventListener('DOMContentLoaded', function() {
 			var empData = $tr.data("empData");
 			
 			var locName = "";
-			if (empData && empData.LocationName) {
-				locName = empData.LocationName.toLowerCase().trim();
+			if (empData) {
+				locName = ((typeof empLocationText === "function") ? empLocationText(empData) : (empData.LocationName || "")).toLowerCase().trim();
 			} else {
 				var locHtml = $tr.find(".emp_worklocation").html() || "";
 				var locParts = locHtml.split("<br");
@@ -1199,173 +1276,101 @@ document.addEventListener('DOMContentLoaded', function() {
 				$tr.hide();
 			}
 		});
+
+		// renumber S.No for the rows that are showing
+		var n = 1;
+		$("#emplistPayrolltbl tbody tr:visible .emp-sno").each(function () { $(this).text(n++); });
 	}
 
 	function getExportData() {
+		// rows in the order shown (sorted + filtered)
 		const exportData = [];
 		let sno = 1;
 		$("#emplistPayrolltbl tbody tr:visible").each(function () {
-			const $tr = $(this);
-			const emp = $tr.data("empData");
-
-			let empid = "";
-			let empName = "";
-			let workLocation = "";
-			let workingHours = "";
-			let joinDate = "";
-			let netSalary = 0;
-
-			if (emp) {
-				empid = emp.EmployeeID || "-";
-				empName = emp.FullName || "-";
-				workLocation = emp.LocationName || "-";
-				workingHours = (emp.InTime && emp.OutTime)
-					? (typeof formatTime_Hi === "function" ? formatTime_Hi(emp.InTime) + " - " + formatTime_Hi(emp.OutTime) : emp.InTime + " - " + emp.OutTime)
-					: "-";
-				const isEmpResigned = (String(emp.Status).toLowerCase() === "resigned" || (emp.DateOfResignation && emp.DateOfResignation !== "0000-00-00" && emp.DateOfResignation !== ""));
-				const jDate = emp.DateOfJoining
-					? new Date(emp.DateOfJoining).toLocaleDateString("en-IN")
-					: "-";
-				if (isEmpResigned) {
-					const rDate = emp.DateOfResignation ? new Date(emp.DateOfResignation).toLocaleDateString("en-IN") : "-";
-					joinDate = jDate + " (Resigned: " + rDate + (emp.remark ? ", " + emp.remark : "") + ")";
-				} else {
-					joinDate = jDate;
-				}
-				netSalary = parseFloat(emp.NetSalary || 0);
-			} else {
-				empid = $tr.find("td").eq(0).text().trim() || $tr.data("empid") || "-";
-				empName = $tr.find("td").eq(1).text().trim() || $tr.data("empfullname") || "-";
-				
-				const locTdHtml = $tr.find(".emp_worklocation").html() || "";
-				const locParts = locTdHtml.split("<br");
-				workLocation = locParts[0] ? locParts[0].replace(/<[^>]*>/g, "").trim() : "-";
-				workingHours = $tr.find(".emp_worklocation small").text().trim() || "-";
-				joinDate = $tr.find(".emp_doj").text().trim() || "-";
-
-				const salaryTxt = $tr.find("td").eq(5).text().replace(/[^0-9.]/g, "").trim();
-				netSalary = salaryTxt ? parseFloat(salaryTxt) : 0;
+			const emp = $(this).data("empData");
+			if (!emp) return;
+			const resigned = empIsResigned(emp);
+			let joinDate = empDateText(emp.DateOfJoining) || "-";
+			if (resigned) {
+				joinDate += " (Resigned: " + (empDateText(emp.DateOfResignation) || "-") + (emp.remark ? ", " + emp.remark : "") + ")";
 			}
-
-			exportData.push({
-				sno: sno++,
-				empid: empid,
-				empName: empName,
-				workLocation: workLocation,
-				workingHours: workingHours,
-				joinDate: joinDate,
-				netSalary: netSalary
-			});
+			exportData.push([
+				sno++,
+				emp.EmployeeID || "-",
+				emp.FullName || "-",
+				emp.FatherName || "-",
+				emp.MobileNo || "-",
+				emp.DepartmentName || "-",
+				emp.DesignationName || "-",
+				empLocationText(emp) || "-",
+				empHoursText(emp) || "-",
+				joinDate,
+				emp.EpfRegId || "-",
+				emp.EsicRegId || "-",
+				emp.BankName || "-",
+				emp.AccountNumber || "-",
+				emp.IFSCCode || "-",
+				empNetSalary(emp),
+				emp.Status || "-"
+			]);
 		});
 		return exportData;
 	}
 
+	const EMP_EXPORT_HEADERS = ["S.No", "Employee ID", "Employee Name", "Father's Name", "Mobile Number", "Department", "Designation",
+		"Working Location", "Working Hours", "Joining Date", "EPF UAN", "ESIC IP No", "Bank Name", "Account Number", "IFSC Code", "Net Salary", "Status"];
+
+	function empNoDataAlert() {
+		if (typeof Swal !== "undefined") {
+			Swal.fire("Warning", "No employee data to export", "warning");
+		} else {
+			alert("No employee data to export");
+		}
+	}
+
 	function exportEmployeePDF(titleText = "Employee Payroll Report") {
 		const data = getExportData();
-		if (!data.length) {
-			if (typeof Swal !== "undefined") {
-				Swal.fire("Warning", "No employee data to export", "warning");
-			} else {
-				alert("No employee data to export");
-			}
-			return;
-		}
+		if (!data.length) { empNoDataAlert(); return; }
 
 		const { jsPDF } = window.jspdf;
-		const doc = new jsPDF("l", "mm", "a4");
-
-		const headers = [["S.No", "EmployeeID", "Employee Name", "Working Location", "Working Hourse", "Joining Date", "Net Salary"]];
-
-		const body = data.map(item => [
-			item.sno,
-			item.empid,
-			item.empName,
-			item.workLocation,
-			item.workingHours,
-			item.joinDate,
-			"₹ " + item.netSalary.toLocaleString("en-IN")
-		]);
+		const doc = new jsPDF("l", "mm", "a3");
+		const body = data.map(r => r.map((c, i) => i === 15 ? "Rs. " + Number(c).toLocaleString("en-IN") : c));
 
 		doc.setFontSize(14);
 		doc.text(titleText, 14, 15);
 		doc.autoTable({
-			head: headers,
+			head: [EMP_EXPORT_HEADERS],
 			body: body,
 			startY: 22,
 			theme: "grid",
-			styles: {
-				fontSize: 9,
-				cellPadding: 3
-			},
-			headStyles: {
-				fillColor: [41, 128, 185],
-				textColor: 255,
-				fontStyle: "bold"
-			},
-			columnStyles: {
-				0: { cellWidth: 15, halign: "center" },
-				1: { cellWidth: 30 },
-				2: { cellWidth: 50 },
-				3: { cellWidth: 45 },
-				4: { cellWidth: 40 },
-				5: { cellWidth: 30 },
-				6: { cellWidth: 35, halign: "right" }
-			}
+			styles: { fontSize: 7, cellPadding: 1.5, overflow: "linebreak" },
+			headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: "bold" },
+			columnStyles: { 0: { halign: "center" }, 15: { halign: "right" } }
 		});
-
 		doc.save("Employee_List.pdf");
 	}
 
 	function exportEmployeeExcel(titleText = "Employee List") {
 		const data = getExportData();
-		if (!data.length) {
-			if (typeof Swal !== "undefined") {
-				Swal.fire("Warning", "No employee data to export", "warning");
-			} else {
-				alert("No employee data to export");
-			}
-			return;
-		}
+		if (!data.length) { empNoDataAlert(); return; }
 
-		const headers = ["S.No", "EmployeeID", "Employee Name", "Working Location", "Working Hourse", "Joining Date", "Net Salary"];
-
-		const aoa = [
-			[titleText],
-			[],
-			headers
-		];
-
-		data.forEach(item => {
-			aoa.push([
-				item.sno,
-				item.empid,
-				item.empName,
-				item.workLocation,
-				item.workingHours,
-				item.joinDate,
-				item.netSalary
-			]);
-		});
-
+		const aoa = [[titleText], [], EMP_EXPORT_HEADERS].concat(data);
 		const ws = XLSX.utils.aoa_to_sheet(aoa);
-
 		ws['!cols'] = [
-			{ wch: 8 },  // S.No
-			{ wch: 15 }, // EmployeeID
-			{ wch: 25 }, // Employee Name
-			{ wch: 20 }, // Working Location
-			{ wch: 20 }, // Working Hourse
-			{ wch: 15 }, // Joining Date
-			{ wch: 15 }  // Net Salary
+			{ wch: 6 }, { wch: 11 }, { wch: 26 }, { wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 18 },
+			{ wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 20 }, { wch: 13 }, { wch: 12 }, { wch: 10 }
 		];
-
+		// keep long numbers (UAN / account no.) as text so Excel doesn't turn them into 1.02E+11
+		for (let r = 3; r < aoa.length; r++) {
+			[10, 11, 13].forEach(function (c) {
+				const ref = XLSX.utils.encode_cell({ r: r, c: c });
+				if (ws[ref]) { ws[ref].t = "s"; ws[ref].v = String(ws[ref].v); }
+			});
+		}
 		const wb = XLSX.utils.book_new();
 		XLSX.utils.book_append_sheet(wb, ws, "Employees");
-
 		XLSX.writeFile(wb, "Employee_List.xlsx");
 	}
-
-
 
 	/*
 	fetchEmployeeDatawithOtherifno_callback('allactive', 'allactive', function(res) {

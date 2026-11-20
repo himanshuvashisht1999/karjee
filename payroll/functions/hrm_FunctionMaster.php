@@ -2463,6 +2463,62 @@ function getEmployeeDeductionRegId($hrmconn, $companyid, $projectid, $employeeid
     return $regid;
 }
 
+/**
+ * Save EPF (DeductionId 1) / ESIC (DeductionId 3) registration no. into hrm_EmployeeDeductionsComponents.regid
+ * - updates the active row if there is one
+ * - else updates the latest inactive row (does NOT re-activate the deduction)
+ * - else (no row yet, e.g. salary not set up) inserts a placeholder row marked 'Deactive';
+ *   the salary save later updates this same row by DeductionId and keeps the regid
+ */
+function saveEmployeeDeductionRegId($hrmconn, $companyid, $subcompanyid, $projectid, $employeeid, $deductionid, $deductionname, $regid)
+{
+    $regid = trim((string)$regid);
+    if (empty($employeeid)) return false;
+
+    $stmt = $hrmconn->prepare("SELECT id FROM hrm_EmployeeDeductionsComponents
+        WHERE companyid = ? AND projectid = ? AND EmployeeId = ? AND DeductionId = ?
+        ORDER BY (tedit IS NULL OR tedit = '') DESC, id DESC LIMIT 1");
+    if (!$stmt) return false;
+    $stmt->bind_param("iiii", $companyid, $projectid, $employeeid, $deductionid);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if ($row) {
+        $up = $hrmconn->prepare("UPDATE hrm_EmployeeDeductionsComponents SET regid = ? WHERE id = ?");
+        if (!$up) return false;
+        $up->bind_param("si", $regid, $row['id']);
+        $ok = $up->execute();
+        $up->close();
+        return $ok;
+    }
+    if ($regid === '') return true; // nothing to store
+
+    $ins = $hrmconn->prepare("INSERT INTO hrm_EmployeeDeductionsComponents (companyid, subcompanyid, projectid, EmployeeId, DeductionId, DeductionName, regid, tedit)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'Deactive')");
+    if (!$ins) return false;
+    $ins->bind_param("iiiiiss", $companyid, $subcompanyid, $projectid, $employeeid, $deductionid, $deductionname, $regid);
+    $ok = $ins->execute();
+    $ins->close();
+    return $ok;
+}
+
+// Reg no. for the work-details form: active row first, otherwise the latest row of that DeductionId
+function getEmployeeDeductionRegIdAny($hrmconn, $companyid, $projectid, $employeeid, $deductionid)
+{
+    $regid = getEmployeeDeductionRegId($hrmconn, $companyid, $projectid, $employeeid, $deductionid);
+    if ($regid !== "" && $regid !== null) return $regid;
+    $stmt = $hrmconn->prepare("SELECT regid FROM hrm_EmployeeDeductionsComponents
+        WHERE companyid = ? AND projectid = ? AND EmployeeId = ? AND DeductionId = ? AND regid IS NOT NULL AND regid <> ''
+        ORDER BY id DESC LIMIT 1");
+    if (!$stmt) return "";
+    $stmt->bind_param("iiii", $companyid, $projectid, $employeeid, $deductionid);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $row['regid'] ?? "";
+}
+
 // function getEmployeeLeavesData($hrmconn, $projectid, $shortby = '', $shortbyvalue = '') {
 //     $data = [];
 
@@ -3956,10 +4012,27 @@ function getEmployeeSummaryWithDetails($conn, $companyid, $subcompanyid, $projec
             e.WorkLocation AS LocationId,
             e.Email,
             e.MobileNo,
+            e.FatherName,
+            e.attendanceType,
+            e.TitleName,
+            e.FirstName,
+            e.MiddleName,
+            e.LastName,
 
             e.InTime,
             e.OutTime,
             e.WorkHourseId,
+
+            /* Bank (latest row) */
+            (SELECT b.BankName FROM hrm_EmployeeBankDetails b WHERE b.EmployeeID = e.EmployeeID AND b.projectid = e.projectid ORDER BY b.BankDetailID DESC LIMIT 1) AS BankName,
+            (SELECT b.AccountNumber FROM hrm_EmployeeBankDetails b WHERE b.EmployeeID = e.EmployeeID AND b.projectid = e.projectid ORDER BY b.BankDetailID DESC LIMIT 1) AS AccountNumber,
+            (SELECT b.IFSCCode FROM hrm_EmployeeBankDetails b WHERE b.EmployeeID = e.EmployeeID AND b.projectid = e.projectid ORDER BY b.BankDetailID DESC LIMIT 1) AS IFSCCode,
+
+            /* EPF UAN (DeductionId 1) / ESIC IP (DeductionId 3): active row first, else latest row with a value */
+            (SELECT d.regid FROM hrm_EmployeeDeductionsComponents d WHERE d.EmployeeId = e.EmployeeID AND d.projectid = e.projectid AND d.DeductionId = 1 AND d.regid IS NOT NULL AND d.regid <> ''
+               ORDER BY (d.tedit IS NULL OR d.tedit = '') DESC, d.id DESC LIMIT 1) AS EpfRegId,
+            (SELECT d.regid FROM hrm_EmployeeDeductionsComponents d WHERE d.EmployeeId = e.EmployeeID AND d.projectid = e.projectid AND d.DeductionId = 3 AND d.regid IS NOT NULL AND d.regid <> ''
+               ORDER BY (d.tedit IS NULL OR d.tedit = '') DESC, d.id DESC LIMIT 1) AS EsicRegId,
 
             loc.LocationName,
             dept.DepartmentName,

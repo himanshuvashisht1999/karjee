@@ -12,6 +12,8 @@ $DesignationID = "";
 $DepartmentID = "";
 $MarkInTime = "";
 $MarkOutTime = "";
+$FatherName = $MobileNo = $BankName = $AccountNumber = $IFSCCode = $EpfRegId = $EsicRegId = "";
+$NetSalaryVal = ""; $SalaryBreakup = ""; $hasSalaryRow = false;
 if(isset($_GET['empid'])){
     $empid = $_GET['empid'];
     $empinfo=fetchEmployeeData($hrmconn, $companyid, $subcompanyid, $projectid, "EmployeeID", $empid);
@@ -25,7 +27,43 @@ if(isset($_GET['empid'])){
     $WorkHourseId = $empinfo[0]['WorkHourseId'];
     $attendanceType = $empinfo[0]['attendanceType'];
     $WorkLocation = $empinfo[0]['WorkLocation'];
+    $FatherName = $empinfo[0]['FatherName'] ?? '';
+    $MobileNo = $empinfo[0]['MobileNo'] ?? '';
+
+    // Bank details (latest row)
+    $empBank = getEmployeeBankDetails($hrmconn, $companyid, $subcompanyid, $projectid, $empid);
+    if (!empty($empBank) && !isset($empBank['error'])) {
+        $lastBank = end($empBank);
+        $BankName = $lastBank['BankName'] ?? '';
+        $AccountNumber = $lastBank['AccountNumber'] ?? '';
+        $IFSCCode = $lastBank['IFSCCode'] ?? '';
+    }
+
+    // EPF UAN (DeductionId 1) / ESIC IP (DeductionId 3)
+    $EpfRegId = getEmployeeDeductionRegIdAny($hrmconn, $companyid, $projectid, $empid, 1);
+    $EsicRegId = getEmployeeDeductionRegIdAny($hrmconn, $companyid, $projectid, $empid, 3);
+
+    // Current monthly salary (same row/figure the Employee List shows as Net Salary)
+    $salStmt = $hrmconn->prepare("SELECT BasicSalary, HRA, ConveyanceAllowance, SpecialAllowance, NetSalary, GrossSalary FROM hrm_EmployeeSalary
+        WHERE EmployeeID = ? AND projectid = ?
+        ORDER BY (validtilldate IS NULL OR validtilldate = '' OR validtilldate = '0000-00-00') DESC, SalaryID DESC LIMIT 1");
+    if ($salStmt) {
+        $salStmt->bind_param("is", $empid, $projectid);
+        $salStmt->execute();
+        $salRow = $salStmt->get_result()->fetch_assoc();
+        $salStmt->close();
+        if ($salRow) {
+            $hasSalaryRow = true;
+            $sumParts = (float)$salRow['BasicSalary'] + (float)$salRow['HRA'] + (float)$salRow['ConveyanceAllowance'] + (float)$salRow['SpecialAllowance'];
+            $NetSalaryVal = (float)$salRow['NetSalary'] > 0 ? (float)$salRow['NetSalary'] : ((float)$salRow['GrossSalary'] > 0 ? (float)$salRow['GrossSalary'] : $sumParts);
+            $SalaryBreakup = 'Basic ₹' . number_format((float)$salRow['BasicSalary'], 0)
+                . ' · HRA ₹' . number_format((float)$salRow['HRA'], 0)
+                . ' · Conveyance ₹' . number_format((float)$salRow['ConveyanceAllowance'], 0)
+                . ' · Special ₹' . number_format((float)$salRow['SpecialAllowance'], 0);
+        }
+    }
 }
+$h = function ($v) { return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8'); };
 
 ?>
 <div class="container mt-2 mb-4" id="employeeworkcontainer">
@@ -91,6 +129,59 @@ if(isset($_GET['empid'])){
                 <div class="col-md-6">
                     <label for="WorkingLocation" class="form-label fw-semibold">Employee Working Location</label>
                     <select id="WorkingLocation" class="form-select"></select>
+                </div>
+            </div>
+
+            <div class="row g-3 mt-1">
+                <div class="col-md-6">
+                    <label for="wrkFatherName" class="form-label fw-semibold"><i class="ti ti-user text-primary me-1"></i>Father's Name</label>
+                    <input type="text" class="form-control" id="wrkFatherName" placeholder="Enter Father's Name" value="<?php echo $h($FatherName); ?>">
+                </div>
+                <div class="col-md-6">
+                    <label for="wrkMobileNo" class="form-label fw-semibold"><i class="ti ti-phone text-primary me-1"></i>Mobile Number</label>
+                    <input type="text" class="form-control" id="wrkMobileNo" maxlength="15" inputmode="numeric" placeholder="Enter Mobile Number" value="<?php echo $h($MobileNo); ?>">
+                </div>
+            </div>
+
+            <div class="row g-3 mt-1">
+                <div class="col-md-6">
+                    <label for="wrkEpfRegId" class="form-label fw-semibold"><i class="ti ti-building-bank text-success me-1"></i>EPF UAN / Registration No. (Deduction ID 1)</label>
+                    <input type="text" class="form-control" id="wrkEpfRegId" maxlength="95" placeholder="Enter EPF UAN No." value="<?php echo $h($EpfRegId); ?>">
+                    <small class="text-muted">Updates `regid` in `hrm_EmployeeDeductionsComponents` for DeductionID 1</small>
+                </div>
+                <div class="col-md-6">
+                    <label for="wrkEsicRegId" class="form-label fw-semibold"><i class="ti ti-shield-heart text-info me-1"></i>ESIC IP / Registration No. (Deduction ID 3)</label>
+                    <input type="text" class="form-control" id="wrkEsicRegId" maxlength="95" placeholder="Enter ESIC IP Registration No." value="<?php echo $h($EsicRegId); ?>">
+                    <small class="text-muted">Updates `regid` in `hrm_EmployeeDeductionsComponents` for DeductionID 3</small>
+                </div>
+            </div>
+
+            <div class="row g-3 mt-1">
+                <div class="col-md-4">
+                    <label for="wrkBankName" class="form-label fw-semibold"><i class="ti ti-building-bank text-primary me-1"></i>Bank Name</label>
+                    <input type="text" class="form-control" id="wrkBankName" placeholder="Enter Bank Name" value="<?php echo $h($BankName); ?>">
+                </div>
+                <div class="col-md-4">
+                    <label for="wrkAccountNumber" class="form-label fw-semibold"><i class="ti ti-credit-card text-primary me-1"></i>Account Number</label>
+                    <input type="text" class="form-control" id="wrkAccountNumber" inputmode="numeric" placeholder="Enter Account Number" value="<?php echo $h($AccountNumber); ?>">
+                </div>
+                <div class="col-md-4">
+                    <label for="wrkIFSCCode" class="form-label fw-semibold"><i class="ti ti-key text-primary me-1"></i>IFSC Code</label>
+                    <input type="text" class="form-control text-uppercase" id="wrkIFSCCode" maxlength="11" placeholder="Enter IFSC Code" value="<?php echo $h($IFSCCode); ?>">
+                </div>
+            </div>
+
+            <div class="row g-3 mt-1">
+                <div class="col-md-6">
+                    <label for="wrkNetSalary" class="form-label fw-semibold"><i class="ti ti-currency-rupee text-success me-1"></i>Net Salary (Monthly)</label>
+                    <?php if ($hasSalaryRow) { ?>
+                        <input type="number" min="1" step="0.01" class="form-control" id="wrkNetSalary"
+                               data-original="<?php echo $h($NetSalaryVal); ?>" value="<?php echo $h($NetSalaryVal); ?>" placeholder="Enter monthly salary">
+                        <small class="text-muted d-block">Now: <?php echo $h($SalaryBreakup); ?>. A new amount is split the same way (Special Allowance takes the balance).</small>
+                    <?php } else { ?>
+                        <input type="text" class="form-control" value="Not set up yet" disabled>
+                        <small class="text-muted d-block">Set the salary once on the next (Salary) step; after that it can be changed here or from the Employee List.</small>
+                    <?php } ?>
                 </div>
             </div>
 

@@ -55,9 +55,13 @@ SELECT
     TIME(a.CheckOutTime) AS markout,
     TIMESTAMPDIFF(MINUTE, a.CheckInTime, a.CheckOutTime) AS workingminutes,
     a.CheckInAddress,
+    a.CheckInLat,
+    a.CheckInLng,
     a.SourceIn,
     a.SourceOut,
     a.CheckOutAddress,
+    a.CheckOutLat,
+    a.CheckOutLng,
     e.InTime,
     e.OutTime
 FROM hrm_EmployeeAttendance a
@@ -66,6 +70,47 @@ WHERE a.ProjectID = ?
 AND (a.tedit IS NULL OR a.tedit = '')
 AND a.AttendanceDate BETWEEN ? AND ?
  order by a.CheckInTime";
+
+/* =========================
+   OFFICE LOCATIONS (for punches saved without an office name,
+   e.g. out-office employees: show nearest office + distance)
+========================= */
+$officeLocations = [];
+$locStmt = $hrmconn->prepare("SELECT LocationName, OfficeLat, OfficeLng FROM hrm_AttendanceLocationMaster
+    WHERE ProjectID = ? AND (tedit IS NULL OR tedit = '') AND OfficeLat IS NOT NULL AND OfficeLng IS NOT NULL
+    AND OfficeLat <> 0 AND OfficeLng <> 0");
+if ($locStmt) {
+    $locStmt->bind_param("s", $projectid);
+    $locStmt->execute();
+    $locRes = $locStmt->get_result();
+    while ($l = $locRes->fetch_assoc()) {
+        $officeLocations[] = [strtoupper($l['LocationName']), (float)$l['OfficeLat'], (float)$l['OfficeLng']];
+    }
+    $locStmt->close();
+}
+
+function attDistanceKm($lat1, $lng1, $lat2, $lng2)
+{
+    $dLat = deg2rad($lat2 - $lat1);
+    $dLng = deg2rad($lng2 - $lng1);
+    $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
+    return 6371 * 2 * atan2(sqrt($a), sqrt(1 - $a));
+}
+
+// Saved office name if present; otherwise nearest office from GPS (same 0.8 km range as the punch screen)
+function attPunchPlace($address, $lat, $lng, $officeLocations)
+{
+    if (!empty($address)) return $address;
+    if ($lat === null || $lng === null || $lat === '' || $lng === '' || ((float)$lat == 0 && (float)$lng == 0)) return '';
+    $best = null;
+    foreach ($officeLocations as $o) {
+        $d = attDistanceKm((float)$lat, (float)$lng, $o[1], $o[2]);
+        if ($best === null || $d < $best[1]) $best = [$o[0], $d];
+    }
+    if ($best === null) return 'Outside Office';
+    $km = number_format($best[1], 2);
+    return $best[1] <= 0.8 ? "Near {$best[0]} ({$km} km)" : "Outside Office - {$km} km from {$best[0]}";
+}
 
 $stmt = $hrmconn->prepare($attendanceSql);
 $stmt->bind_param("sss", $projectid, $dateFrom, $dateTo);
@@ -85,8 +130,10 @@ while ($row = $res->fetch_assoc()) {
         ? round($row['workingminutes'] / 60, 2)
         : "";
 
-    $locationIn = ($row['CheckInAddress'] ?: '') . ($row['SourceIn'] ? ' (' . $row['SourceIn'] . ')' : '');
-    $locationOut = ($row['CheckOutAddress'] ?: '') . ($row['SourceOut'] ? ' (' . $row['SourceOut'] . ')' : '');
+    $placeIn  = attPunchPlace($row['CheckInAddress'], $row['CheckInLat'], $row['CheckInLng'], $officeLocations);
+    $placeOut = attPunchPlace($row['CheckOutAddress'], $row['CheckOutLat'], $row['CheckOutLng'], $officeLocations);
+    $locationIn = $placeIn . ($row['SourceIn'] ? ' (' . $row['SourceIn'] . ')' : '');
+    $locationOut = $placeOut . ($row['SourceOut'] ? ' (' . $row['SourceOut'] . ')' : '');
     
     $fullLocation = "";
     if ($locationIn) $fullLocation .= "In: " . $locationIn;
@@ -110,7 +157,11 @@ while ($row = $res->fetch_assoc()) {
         "workingduration"=> $hasMarkOut ? $workingDuration : "-",
         "locationIn"     => $locationIn,
         "locationOut"    => $locationOut,
-        "location"       => $fullLocation ?: '-'
+        "location"       => $fullLocation ?: '-',
+        "inLat"          => $row['CheckInLat'],
+        "inLng"          => $row['CheckInLng'],
+        "outLat"         => $row['CheckOutLat'],
+        "outLng"         => $row['CheckOutLng']
     ];
 
     $markedIds[$row['EmployeeID']] = true;

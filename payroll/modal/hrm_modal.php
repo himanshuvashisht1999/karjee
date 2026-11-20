@@ -194,7 +194,71 @@ if ($action == "EmployeeRegistration") {
                 if (!empty($DateOfJoining) && $DateOfJoining != '0000-00-00') {
                     $hrmconn->query("UPDATE hrm_EmployeeSalary SET affectedfrom = '$DateOfJoining' WHERE EmployeeID = '$EmployeeID' AND (affectedfrom IS NULL OR affectedfrom = '' OR affectedfrom = '0000-00-00')");
                 }
-                $response = ['status' => 'success', 'message' => 'Employee details updated successfully.'];
+
+                $extraErrors = [];
+
+                // Father's Name / Mobile Number (only when sent from the work page)
+                if (isset($_POST['FatherName']) || isset($_POST['MobileNumber'])) {
+                    $wFatherName = trim($_POST['FatherName'] ?? '');
+                    $wMobileNo = trim($_POST['MobileNumber'] ?? '');
+                    $pStmt = $hrmconn->prepare("UPDATE hrm_EmployeesMaster SET FatherName = ?, MobileNo = ? WHERE companyid = ? AND projectid = ? AND EmployeeID = ?");
+                    if ($pStmt) {
+                        $pStmt->bind_param("sssss", $wFatherName, $wMobileNo, $companyid, $projectid, $EmployeeID);
+                        if (!$pStmt->execute()) $extraErrors[] = "Father's Name/Mobile";
+                        $pStmt->close();
+                    } else {
+                        $extraErrors[] = "Father's Name/Mobile";
+                    }
+                }
+
+                // Bank details (same upsert as the personal details page)
+                if (isset($_POST['BankName'])) {
+                    $wBankName = trim($_POST['BankName'] ?? '');
+                    $wAccountNumber = trim($_POST['AccountNumber'] ?? '');
+                    $wIFSCCode = strtoupper(trim($_POST['IFSCCode'] ?? ''));
+                    $chkBank = getEmployeeBankDetails($hrmconn, $companyid, $subcompanyid, $projectid, $EmployeeID);
+                    if (!empty($chkBank) && !isset($chkBank['error'])) {
+                        $bStmt = $hrmconn->prepare("UPDATE hrm_EmployeeBankDetails SET BankName=?, AccountNumber=?, IFSCCode=? WHERE EmployeeID=? AND projectid=?");
+                        if ($bStmt) {
+                            $bStmt->bind_param("sssii", $wBankName, $wAccountNumber, $wIFSCCode, $EmployeeID, $projectid);
+                            if (!$bStmt->execute()) $extraErrors[] = "Bank details";
+                            $bStmt->close();
+                        } else {
+                            $extraErrors[] = "Bank details";
+                        }
+                    } elseif ($wBankName !== '' || $wAccountNumber !== '' || $wIFSCCode !== '') {
+                        $bStmt = $hrmconn->prepare("INSERT INTO hrm_EmployeeBankDetails (companyid, subcompanyid, projectid, EmployeeID, BankName, AccountNumber, IFSCCode) VALUES (?,?,?,?,?,?,?)");
+                        if ($bStmt) {
+                            $bStmt->bind_param("iiissss", $companyid, $subcompanyid, $projectid, $EmployeeID, $wBankName, $wAccountNumber, $wIFSCCode);
+                            if (!$bStmt->execute()) $extraErrors[] = "Bank details";
+                            $bStmt->close();
+                        } else {
+                            $extraErrors[] = "Bank details";
+                        }
+                    }
+                }
+
+                // EPF UAN (DeductionId 1) / ESIC IP (DeductionId 3)
+                if (isset($_POST['epf_regid'])) {
+                    if (!saveEmployeeDeductionRegId($hrmconn, $companyid, $subcompanyid, $projectid, $EmployeeID, 1, 'Employee Provident Fund', $_POST['epf_regid'])) $extraErrors[] = "EPF UAN";
+                }
+                if (isset($_POST['esic_regid'])) {
+                    if (!saveEmployeeDeductionRegId($hrmconn, $companyid, $subcompanyid, $projectid, $EmployeeID, 3, 'Employee State Insurance', $_POST['esic_regid'])) $extraErrors[] = "ESIC IP";
+                }
+
+                // Net Salary (monthly) - only sent when the admin changed it on the work page
+                if (isset($_POST['NetSalary']) && $_POST['NetSalary'] !== '') {
+                    $salRes = is_numeric($_POST['NetSalary'])
+                        ? updateEmployeeMonthlySalaryAmount($hrmconn, $companyid, $subcompanyid, $projectid, $EmployeeID, $_POST['NetSalary'], $addedby)
+                        : ['status' => 'error', 'message' => 'invalid amount'];
+                    if ($salRes['status'] !== 'success') $extraErrors[] = "Net Salary (" . $salRes['message'] . ")";
+                }
+
+                if (empty($extraErrors)) {
+                    $response = ['status' => 'success', 'message' => 'Employee details updated successfully.'];
+                } else {
+                    $response = ['status' => 'error', 'message' => 'Work details saved, but could not save: ' . implode(', ', $extraErrors)];
+                }
             } else {
                 $response = ['status' => 'error', 'message' => 'Error updating employee details.'];
             }
@@ -757,6 +821,126 @@ if ($action == "EmployeeRegistration") {
     $projectid = isset($_POST['projectid']) ? $_POST['projectid'] : null;
     $empsum = getEmployeeSummaryWithDetails($hrmconn, $companyid, $subcompanyid, $projectid);
     echo json_encode($empsum);
+} else if ($action == "updateEmployeeSingleField") {
+    // Inline edit from the Employee List: one field of one employee at a time
+    $companyid = $_POST['companyid'] ?? '';
+    $subcompanyid = $_POST['subcompanyid'] ?? '';
+    $projectid = $_POST['projectid'] ?? '';
+    $EmployeeID = $_POST['EmployeeID'] ?? '';
+    $field = $_POST['field'] ?? '';
+    $value = trim((string)($_POST['value'] ?? ''));
+    $out = ['status' => 'error', 'message' => 'Invalid request.'];
+
+    $masterFields = ['FatherName' => 'FatherName', 'MobileNo' => 'MobileNo', 'DepartmentID' => 'DepartmentID', 'DesignationID' => 'DesignationID', 'DateOfJoining' => 'DateOfJoining'];
+    $bankFields = ['BankName' => 'BankName', 'AccountNumber' => 'AccountNumber', 'IFSCCode' => 'IFSCCode'];
+
+    $empChk = fetchEmployeeData($hrmconn, $companyid, $subcompanyid, $projectid, "EmployeeID", $EmployeeID);
+    if (empty($EmployeeID) || empty($empChk)) {
+        echo json_encode(['status' => 'error', 'message' => 'Employee not found.']);
+        exit;
+    }
+
+    if ($field === 'MobileNo' && $value !== '' && !preg_match('/^\+?[0-9]{10,13}$/', $value)) {
+        echo json_encode(['status' => 'error', 'message' => 'Enter a valid Mobile Number.']);
+        exit;
+    }
+    if ($field === 'IFSCCode') {
+        $value = strtoupper($value);
+        if ($value !== '' && !preg_match('/^[A-Z]{4}0[A-Z0-9]{6}$/', $value)) {
+            echo json_encode(['status' => 'error', 'message' => 'Enter a valid 11-character IFSC Code (e.g. SBIN0001234).']);
+            exit;
+        }
+    }
+    if (in_array($field, ['DepartmentID', 'DesignationID', 'DateOfJoining', 'WorkLocation', 'WorkHourseId']) && $value === '') {
+        echo json_encode(['status' => 'error', 'message' => 'This field cannot be empty.']);
+        exit;
+    }
+    if ($field === 'DateOfJoining' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        echo json_encode(['status' => 'error', 'message' => 'Invalid date.']);
+        exit;
+    }
+
+    if (isset($masterFields[$field])) {
+        $col = $masterFields[$field];
+        $st = $hrmconn->prepare("UPDATE hrm_EmployeesMaster SET $col = ?, updated_at = NOW() WHERE companyid = ? AND projectid = ? AND EmployeeID = ?");
+        $st->bind_param("ssss", $value, $companyid, $projectid, $EmployeeID);
+        $ok = $st->execute();
+        $st->close();
+        if ($ok && $field === 'DateOfJoining') {
+            // same rule as the work-details save
+            $st2 = $hrmconn->prepare("UPDATE hrm_EmployeeSalary SET affectedfrom = ? WHERE EmployeeID = ? AND (affectedfrom IS NULL OR affectedfrom = '' OR affectedfrom = '0000-00-00')");
+            $st2->bind_param("ss", $value, $EmployeeID);
+            $st2->execute();
+            $st2->close();
+        }
+        $out = $ok ? ['status' => 'success', 'message' => 'Updated.', 'value' => $value] : ['status' => 'error', 'message' => 'Update failed.'];
+    } elseif ($field === 'WorkLocation') {
+        $attendanceType = ($value === 'outoffice') ? 'outoffice' : 'office';
+        $st = $hrmconn->prepare("UPDATE hrm_EmployeesMaster SET WorkLocation = ?, attendanceType = ?, updated_at = NOW() WHERE companyid = ? AND projectid = ? AND EmployeeID = ?");
+        $st->bind_param("sssss", $value, $attendanceType, $companyid, $projectid, $EmployeeID);
+        $ok = $st->execute();
+        $st->close();
+        $out = $ok ? ['status' => 'success', 'message' => 'Updated.', 'value' => $value, 'attendanceType' => $attendanceType] : ['status' => 'error', 'message' => 'Update failed.'];
+    } elseif ($field === 'WorkHourseId') {
+        $gwh = getEmployeeWorkingHoursFromMaster($hrmconn, $projectid, $value, false);
+        if (empty($gwh)) {
+            echo json_encode(['status' => 'error', 'message' => 'Working Hours not found.']);
+            exit;
+        }
+        $inT = $gwh[0]['start_time'];
+        $outT = $gwh[0]['end_time'];
+        $st = $hrmconn->prepare("UPDATE hrm_EmployeesMaster SET WorkHourseId = ?, InTime = ?, OutTime = ?, updated_at = NOW() WHERE companyid = ? AND projectid = ? AND EmployeeID = ?");
+        $st->bind_param("ssssss", $value, $inT, $outT, $companyid, $projectid, $EmployeeID);
+        $ok = $st->execute();
+        $st->close();
+        $out = $ok ? ['status' => 'success', 'message' => 'Updated.', 'value' => $value, 'InTime' => $inT, 'OutTime' => $outT] : ['status' => 'error', 'message' => 'Update failed.'];
+    } elseif (isset($bankFields[$field])) {
+        $col = $bankFields[$field];
+        $chkBank = getEmployeeBankDetails($hrmconn, $companyid, $subcompanyid, $projectid, $EmployeeID);
+        if (!empty($chkBank) && !isset($chkBank['error'])) {
+            $st = $hrmconn->prepare("UPDATE hrm_EmployeeBankDetails SET $col = ? WHERE EmployeeID = ? AND projectid = ?");
+            $st->bind_param("sss", $value, $EmployeeID, $projectid);
+        } else {
+            $st = $hrmconn->prepare("INSERT INTO hrm_EmployeeBankDetails (companyid, subcompanyid, projectid, EmployeeID, $col) VALUES (?,?,?,?,?)");
+            $st->bind_param("iiiis", $companyid, $subcompanyid, $projectid, $EmployeeID, $value);
+        }
+        $ok = $value === '' && empty($chkBank) ? true : $st->execute();
+        $st->close();
+        $out = $ok ? ['status' => 'success', 'message' => 'Updated.', 'value' => $value] : ['status' => 'error', 'message' => 'Update failed.'];
+    } elseif ($field === 'EpfRegId' || $field === 'EsicRegId') {
+        $ok = ($field === 'EpfRegId')
+            ? saveEmployeeDeductionRegId($hrmconn, $companyid, $subcompanyid, $projectid, $EmployeeID, 1, 'Employee Provident Fund', $value)
+            : saveEmployeeDeductionRegId($hrmconn, $companyid, $subcompanyid, $projectid, $EmployeeID, 3, 'Employee State Insurance', $value);
+        $out = $ok ? ['status' => 'success', 'message' => 'Updated.', 'value' => $value] : ['status' => 'error', 'message' => 'Update failed.'];
+    } elseif ($field === 'FullName') {
+        $allowedTitles = ['', 'Mr.', 'Ms.', 'Mrs.', 'Miss'];
+        $tTitle = trim($_POST['TitleName'] ?? '');
+        $tFirst = trim($_POST['FirstName'] ?? '');
+        $tMiddle = trim($_POST['MiddleName'] ?? '');
+        $tLast = trim($_POST['LastName'] ?? '');
+        if ($tFirst === '') {
+            echo json_encode(['status' => 'error', 'message' => 'First Name is required.']);
+            exit;
+        }
+        if (!in_array($tTitle, $allowedTitles, true)) $tTitle = '';
+        $st = $hrmconn->prepare("UPDATE hrm_EmployeesMaster SET TitleName = ?, FirstName = ?, MiddleName = ?, LastName = ?, updated_at = NOW() WHERE companyid = ? AND projectid = ? AND EmployeeID = ?");
+        $st->bind_param("sssssss", $tTitle, $tFirst, $tMiddle, $tLast, $companyid, $projectid, $EmployeeID);
+        $ok = $st->execute();
+        $st->close();
+        $full = trim(preg_replace('/\s+/', ' ', "$tTitle $tFirst $tMiddle $tLast"));
+        $out = $ok
+            ? ['status' => 'success', 'message' => 'Updated.', 'value' => $full, 'TitleName' => $tTitle, 'FirstName' => $tFirst, 'MiddleName' => $tMiddle, 'LastName' => $tLast]
+            : ['status' => 'error', 'message' => 'Update failed.'];
+    } elseif ($field === 'NetSalary') {
+        if (!is_numeric($value)) {
+            echo json_encode(['status' => 'error', 'message' => 'Enter a valid amount.']);
+            exit;
+        }
+        $out = updateEmployeeMonthlySalaryAmount($hrmconn, $companyid, $subcompanyid, $projectid, $EmployeeID, $value, $_POST['addedby'] ?? '');
+    } else {
+        $out = ['status' => 'error', 'message' => 'This field cannot be edited here.'];
+    }
+    echo json_encode($out);
 } else if ($action == "removEmployeeFromMaster") {
     $companyid = $_POST['companyid'] ?? null;
     $subcompanyid = $_POST['subcompanyid'] ?? null;

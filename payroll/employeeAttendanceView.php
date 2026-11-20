@@ -7,6 +7,12 @@ if (isset($_GET['vw']) == 1) {
 }
 ?>
 <style>
+    #attendanceviewbyadmin thead th.att-sortable {
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+    }
+
     .holiday-card {
         width: 100%;
         margin: 10px auto;
@@ -281,15 +287,15 @@ if (isset($_GET['vw']) == 1) {
                 <table class="table hrm-table table-hover mb-0" id="attendanceviewbyadmin">
                     <thead>
                         <tr>
-                            <th class="text-center">S.No</th>
-                            <th>Employee ID</th>
-                            <th>Employee Name</th>
-                            <th>Attendance Date</th>
-                            <th>Mark In</th>
-                            <th>Mark Out</th>
-                            <th>Duration</th>
-                            <th>Status</th>
-                            <th>Location/Device</th>
+                            <th class="text-center att-sortable" data-sort="sno" title="Reset to original order">S.No<i class="ti ti-arrows-sort opacity-50 att-sort-icon ms-1"></i></th>
+                            <th class="att-sortable" data-sort="employeeid">Employee ID<i class="ti ti-arrows-sort opacity-50 att-sort-icon ms-1"></i></th>
+                            <th class="att-sortable" data-sort="empoyeename">Employee Name<i class="ti ti-arrows-sort opacity-50 att-sort-icon ms-1"></i></th>
+                            <th class="att-sortable" data-sort="attendancedate">Attendance Date<i class="ti ti-arrows-sort opacity-50 att-sort-icon ms-1"></i></th>
+                            <th class="att-sortable" data-sort="markin">Mark In<i class="ti ti-arrows-sort opacity-50 att-sort-icon ms-1"></i></th>
+                            <th class="att-sortable" data-sort="markout">Mark Out<i class="ti ti-arrows-sort opacity-50 att-sort-icon ms-1"></i></th>
+                            <th class="att-sortable" data-sort="workingduration">Duration<i class="ti ti-arrows-sort opacity-50 att-sort-icon ms-1"></i></th>
+                            <th class="att-sortable" data-sort="status">Status<i class="ti ti-arrows-sort opacity-50 att-sort-icon ms-1"></i></th>
+                            <th class="att-sortable" data-sort="location">Location/Device<i class="ti ti-arrows-sort opacity-50 att-sort-icon ms-1"></i></th>
                         </tr>
                     </thead>
                     <tbody></tbody>

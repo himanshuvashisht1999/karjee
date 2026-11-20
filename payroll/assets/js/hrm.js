@@ -663,6 +663,43 @@ $(document).on("click", "#employeeworkdetailupdbtn", function () {
     }).get().join(",");
     form_data.append('WeekOff', selectedWeekOff);
 
+    // Personal / statutory / bank fields (only sent when present on the page)
+    if ($("#wrkFatherName").length) {
+        let wrkMobile = ($("#wrkMobileNo").val() || "").trim();
+        if (wrkMobile !== "" && !/^\+?[0-9]{10,13}$/.test(wrkMobile)) {
+            alertmessage("error", "Enter a valid Mobile Number");
+            $('#wrkMobileNo').focus();
+            return false;
+        }
+        let wrkIfsc = ($("#wrkIFSCCode").val() || "").trim().toUpperCase();
+        if (wrkIfsc !== "" && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(wrkIfsc)) {
+            alertmessage("error", "Enter a valid 11-character IFSC Code (e.g. SBIN0001234)");
+            $('#wrkIFSCCode').focus();
+            return false;
+        }
+        form_data.append('FatherName', ($("#wrkFatherName").val() || "").trim());
+        form_data.append('MobileNumber', wrkMobile);
+        form_data.append('epf_regid', ($("#wrkEpfRegId").val() || "").trim());
+        form_data.append('esic_regid', ($("#wrkEsicRegId").val() || "").trim());
+        form_data.append('BankName', ($("#wrkBankName").val() || "").trim());
+        form_data.append('AccountNumber', ($("#wrkAccountNumber").val() || "").trim());
+        form_data.append('IFSCCode', wrkIfsc);
+    }
+
+    // Net Salary: only sent when changed, so saving work details never re-splits the salary by itself
+    if ($("#wrkNetSalary").length) {
+        let netNew = ($("#wrkNetSalary").val() || "").trim();
+        let netOld = String($("#wrkNetSalary").data("original") || "");
+        if (netNew === "" || !(parseFloat(netNew) > 0)) {
+            alertmessage("error", "Enter a valid Net Salary amount");
+            $('#wrkNetSalary').focus();
+            return false;
+        }
+        if (parseFloat(netNew) !== parseFloat(netOld)) {
+            form_data.append('NetSalary', netNew);
+        }
+    }
+
 
     $.ajax({
         url: routurl + "modal/hrm_modal.php?action=AddUpdateEmployeeWorkDetails",
@@ -777,113 +814,442 @@ function showDefaultEmployeeMasterView() {
     renderPayrollEmployeeTable("Active");
 }
 
+// =====================================================================
+// 👥 Employee List (employees.php): all details + column sort + inline edit
+// =====================================================================
+var empListSort = { key: null, dir: 'asc' };
+var empListCurrentType = "Active";
+var empEditOptions = null;       // { dept:[], desig:[], loc:[], hours:[] } loaded once
+var empEditOptionsLoading = null;
+
+function empEsc(v) {
+    return String(v === undefined || v === null ? "" : v)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function empIsResigned(emp) {
+    return String(emp.Status).toLowerCase() === "resigned" ||
+        (emp.DateOfResignation && emp.DateOfResignation !== "0000-00-00" && emp.DateOfResignation !== "");
+}
+
+function empLocationText(emp) {
+    if (emp.LocationName) return emp.LocationName;
+    if (emp.LocationId === "outoffice" || emp.attendanceType === "outoffice") return "Outside Office";
+    return "";
+}
+
+function empHoursText(emp) {
+    if (!emp.InTime || !emp.OutTime) return "";
+    return (typeof formatTime_Hi === "function")
+        ? formatTime_Hi(emp.InTime) + " - " + formatTime_Hi(emp.OutTime)
+        : emp.InTime + " - " + emp.OutTime;
+}
+
+function empDateText(d) {
+    if (!d || d === "0000-00-00") return "";
+    const p = String(d).split("-");
+    return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : d;
+}
+
+function empNetSalary(emp) {
+    return parseFloat(emp.NetSalary || emp.GrossSalary || 0) || 0;
+}
+
+// --- Sorting -----------------------------------------------------------
+function empSortValue(emp, key) {
+    let v;
+    switch (key) {
+        case "EmployeeID": return parseInt(emp.EmployeeID, 10) || 0;
+        case "NetSalary": return empNetSalary(emp);
+        case "LocationDisplay": v = empLocationText(emp); break;
+        case "DateOfJoining": v = (emp.DateOfJoining && emp.DateOfJoining !== "0000-00-00") ? emp.DateOfJoining : ""; break; // YYYY-MM-DD sorts as text
+        default: v = emp[key];
+    }
+    v = (v === undefined || v === null) ? "" : String(v).trim();
+    return v === "" ? null : v.toLowerCase();
+}
+
+function empSortList(list) {
+    if (!empListSort.key) return list.slice();
+    const key = empListSort.key, mul = empListSort.dir === "asc" ? 1 : -1;
+    return list
+        .map((emp, idx) => ({ emp, idx, val: empSortValue(emp, key) }))
+        .sort((a, b) => {
+            if (a.val === null && b.val === null) return a.idx - b.idx;
+            if (a.val === null) return 1;      // blanks always last
+            if (b.val === null) return -1;
+            if (typeof a.val === "number" && typeof b.val === "number") return (a.val - b.val) * mul || a.idx - b.idx;
+            return String(a.val).localeCompare(String(b.val), undefined, { numeric: true }) * mul || a.idx - b.idx;
+        })
+        .map(x => x.emp);
+}
+
+function empUpdateSortIcons() {
+    $("#emplistPayrolltbl thead th[data-sort]").each(function () {
+        let icon = "ti-arrows-sort opacity-50";
+        if (empListSort.key && $(this).data("sort") === empListSort.key) {
+            icon = empListSort.dir === "asc" ? "ti-sort-ascending" : "ti-sort-descending";
+        }
+        $(this).find(".emp-sort-icon").attr("class", "ti " + icon + " emp-sort-icon ms-1");
+    });
+}
+
+$(document).on("click", "#emplistPayrolltbl thead th[data-sort]", function () {
+    const key = $(this).data("sort");
+    if (key === "sno") {
+        empListSort = { key: null, dir: "asc" };
+    } else if (empListSort.key === key) {
+        empListSort.dir = empListSort.dir === "asc" ? "desc" : "asc";
+    } else {
+        empListSort = { key: key, dir: "asc" };
+    }
+    renderPayrollEmployeeTable(empListCurrentType);
+});
+
+// --- Row building ------------------------------------------------------
+function empEditCell(emp, field, text, extraClass) {
+    const canEdit = !empIsResigned(emp);
+    const shown = (text === "" || text === null || text === undefined)
+        ? `<span class="emp-empty">-</span>` : empEsc(text);
+    return `<td class="emp-edit-cell ${extraClass || ""}" data-field="${field}">
+                <span class="emp-cell-val">${shown}</span>${canEdit ? `<i class="ti ti-pencil emp-edit-icon" tabindex="0" title="Edit"></i>` : ""}
+            </td>`;
+}
+
+function empBuildRow(emp, sno) {
+    const routurl = $("body").data("routurl");
+    const key = $("body").data("key");
+    const isResigned = empIsResigned(emp);
+
+    let rawPhoto = emp.empPhotopath || emp.ProfilePhoto || "";
+    let profilepath = routurl + "assets/img/profiles/profile.jpg";
+    if (rawPhoto && rawPhoto.trim() !== "" && !rawPhoto.toLowerCase().includes("no file") && !rawPhoto.toLowerCase().includes("error")) {
+        let cleanPhoto = rawPhoto.trim();
+        profilepath = /^https?:\/\//.test(cleanPhoto) ? cleanPhoto : routurl + cleanPhoto.replace(/^(\.\.\/|\.\/)+/, "");
+    }
+
+    let joinCell = empEditCell(emp, "DateOfJoining", empDateText(emp.DateOfJoining));
+    if (isResigned) {
+        const remarkHtml = emp.remark ? `<br/><small class="text-muted"><strong>Remark:</strong> ${empEsc(emp.remark)}</small>` : "";
+        joinCell = `<td class="emp_doj">
+                <div class="text-dark fw-medium mb-1">${empEsc(empDateText(emp.DateOfJoining) || "-")}</div>
+                <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1 fw-semibold"><i class="ti ti-calendar-x me-1"></i>Resigned: ${empEsc(empDateText(emp.DateOfResignation) || "-")}</span>${remarkHtml}
+            </td>`;
+    }
+
+    const statusBadge = emp.Status === "Active"
+        ? `<span class="badge bg-success">Active</span>`
+        : emp.Status === "Resigned"
+            ? `<span class="badge bg-danger">Resigned</span>`
+            : `<span class="badge bg-secondary">${empEsc(emp.Status || "-")}</span>`;
+
+    const actionHtml = isResigned
+        ? `<span class="badge bg-danger">Resigned</span>`
+        : `<button class="btn btn-sm btn-primary" onclick="gotoCompletebasicdetails(${parseInt(emp.EmployeeID, 10)})">Edit / View</button>
+           <i class="btn ti ti-trash text-danger deletemodal" style="font-size: 22px;" title="Remove"></i>`;
+
+    const empLink = `${routurl}empPanel/index.php?k=${encodeURIComponent(key)}&empid=${encodeURIComponent(emp.EmployeeID)}&accessby=adminu`;
+
+    const $tr = $(`
+        <tr data-empid="${empEsc(emp.EmployeeID)}" data-empfullname="${empEsc(emp.FullName)}" data-dob="${empEsc(emp.DateOfBirth)}">
+            <td class="text-center emp-sno">${sno}</td>
+            <td class="emp_name emp-edit-cell" data-field="FullName">
+                <div class="d-flex align-items-center">
+                    <a href="${empLink}">
+                        <img src="${empEsc(profilepath)}" onerror="this.onerror=null; this.src='${routurl}assets/img/profiles/profile.jpg';" style="width:26px; height:26px; object-fit:cover;" class="rounded-circle" alt="Profile" />
+                    </a>
+                    <div class="ms-2">
+                        <a href="${empLink}"><strong>${empEsc(emp.EmployeeID)} - ${empEsc(emp.FullName)}</strong></a>${isResigned ? "" : `<i class="ti ti-pencil emp-edit-icon" tabindex="0" title="Edit name"></i>`}
+                    </div>
+                </div>
+            </td>
+            ${empEditCell(emp, "FatherName", emp.FatherName)}
+            ${empEditCell(emp, "MobileNo", emp.MobileNo)}
+            ${empEditCell(emp, "DepartmentID", emp.DepartmentName)}
+            ${empEditCell(emp, "DesignationID", emp.DesignationName)}
+            ${empEditCell(emp, "WorkLocation", empLocationText(emp), "emp_worklocation")}
+            ${empEditCell(emp, "WorkHourseId", empHoursText(emp))}
+            ${joinCell}
+            ${empEditCell(emp, "EpfRegId", emp.EpfRegId)}
+            ${empEditCell(emp, "EsicRegId", emp.EsicRegId)}
+            ${empEditCell(emp, "BankName", emp.BankName)}
+            ${empEditCell(emp, "AccountNumber", emp.AccountNumber)}
+            ${empEditCell(emp, "IFSCCode", emp.IFSCCode)}
+            ${empEditCell(emp, "NetSalary", "₹ " + empNetSalary(emp).toLocaleString("en-IN"), "text-end")}
+            <td>${statusBadge}</td>
+            <td class="noexport">${actionHtml}</td>
+        </tr>
+    `);
+    $tr.data("empData", emp);
+    return $tr;
+}
+
 function renderPayrollEmployeeTable(type) {
-    let routurl = $("body").data("routurl");
-    var key = $("body").data("key");
+    empListCurrentType = type;
     const tbody = $("#emplistPayrolltbl tbody");
     $("#employeemasterheader").text(type + " Employee List");
     tbody.empty();
-    const list = employeeSummaryData[type]?.list || [];
+    empUpdateSortIcons();
+    const list = (typeof employeeSummaryData !== "undefined" && employeeSummaryData[type]?.list) || [];
     if (!list.length) {
-        tbody.append(`
-            <tr>
-                <td colspan="6" class="text-center text-muted">
-                    No employee data available
-                </td>
-            </tr>
-        `);
+        tbody.append(`<tr><td colspan="17" class="text-center text-muted">No employee data available</td></tr>`);
         return;
     }
 
-    $.each(list, function (i, emp) {
-        const workingHour =
-            emp.InTime && emp.OutTime
-                ? formatTime_Hi(emp.InTime) + " - " + formatTime_Hi(emp.OutTime)
-                : "-";
-        const isResigned = (String(emp.Status).toLowerCase() === "resigned" || (emp.DateOfResignation && emp.DateOfResignation !== "0000-00-00" && emp.DateOfResignation !== ""));
-        const joinDate = emp.DateOfJoining
-            ? new Date(emp.DateOfJoining).toLocaleDateString("en-IN")
-            : "-";
-        let joinDateDisplay = "-";
-        if (isResigned) {
-            const resignDate = emp.DateOfResignation
-                ? new Date(emp.DateOfResignation).toLocaleDateString("en-IN")
-                : "-";
-            const remarkHtml = emp.remark ? `<br/><small class="text-muted" style="line-height:1.2; display:inline-block; margin-top:2px;"><strong>Remark:</strong> ${emp.remark}</small>` : '';
-            joinDateDisplay = `<div>
-                <div class="text-dark fw-medium mb-1">${joinDate}</div>
-                <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1 fw-semibold"><i class="ti ti-calendar-x me-1"></i>Resigned: ${resignDate}</span>${remarkHtml}
-            </div>`;
-        } else {
-            joinDateDisplay = joinDate;
-        }
-        let statusBadge =
-            emp.Status === "Active"
-                ? `<span class="badge bg-success">Active</span>`
-                : emp.Status === "Resigned"
-                    ? `<span class="badge bg-danger">Resigned</span>`
-                    : `<span class="badge bg-secondary">${emp.Status}</span>`;
-
-        let actionEditBadge = (emp.Status === "Resigned") ? "" : `<button class="btn btn-sm btn-primary"
-          onclick="gotoCompletebasicdetails(${emp.EmployeeID})"> Edit / View</button>`;
-
-        let actionRemoveBadge = (emp.Status === "Resigned") ? `<span class="badge bg-danger">Resigned</span>` : `<i class="btn ti ti-trash text-danger deletemodal" style="font-size: 24px;"></i>`;
-        let rawPhoto = emp.empPhotopath || emp.ProfilePhoto || '';
-        let profilepath = '';
-        if (rawPhoto && rawPhoto.trim() !== '' && !rawPhoto.toLowerCase().includes("no file") && !rawPhoto.toLowerCase().includes("error")) {
-            let cleanPhoto = rawPhoto.trim();
-            if (cleanPhoto.startsWith('http://') || cleanPhoto.startsWith('https://')) {
-                profilepath = cleanPhoto;
-            } else {
-                cleanPhoto = cleanPhoto.replace(/^(\.\.\/|\.\/)+/, '');
-                profilepath = routurl + cleanPhoto;
-            }
-        } else {
-            profilepath = routurl + 'assets/img/profiles/profile.jpg';
-        }
-
-        const locationHours = (emp.LocationName || "-") + `<br/><small class="text-muted">${workingHour}</small>`;
-
-        const $tr = $(`
-            <tr data-empid="${emp.EmployeeID}" data-empfullname="${emp.FullName}" data-dob="${emp.DateOfBirth}">
-                <td style="display:none;">${emp.EmployeeID || "-"}</td>
-                <td style="display:none;">${emp.FullName || "-"}</td>
-                <td class="emp_name noexport">
-                  <div class="d-flex align-items-center">
-                    <a href="${routurl}empPanel/index.php?k=${key}&empid=${emp.EmployeeID}&accessby=adminu">
-                      <img src="${profilepath}" onerror="this.onerror=null; this.src='${routurl}assets/img/profiles/profile.jpg';" style="width:40px; height:40px; object-fit:cover;" class="rounded-circle" alt="Profile" />
-                    </a>
-                    <div class="ms-2">
-                      <p class="text-dark mb-0">
-                        <a href="${routurl}empPanel/index.php?k=${key}&empid=${emp.EmployeeID}&accessby=adminu"><strong>${emp.EmployeeID} - ${emp.FullName}</strong></a>
-                      </p>
-                      <span class="fs-12 text-muted">${emp.DesignationName || "-"}</span>
-                    </div>
-                  </div>
-                </td>
-                <td class="emp_worklocation">${locationHours}</td>
-                <td class="emp_doj">${joinDateDisplay}</td>
-                <td class="text-end">
-                    ₹ ${parseFloat(emp.NetSalary || emp.GrossSalary || 0).toLocaleString("en-IN")}
-                </td>
-                <td class="noexport d-none">${statusBadge}</td>
-                <td class="noexport">
-                    ${actionEditBadge}
-                    ${actionRemoveBadge}
-                </td>
-            </tr>
-        `);
-        $tr.data("empData", emp);
-        tbody.append($tr);
+    empSortList(list).forEach(function (emp, i) {
+        tbody.append(empBuildRow(emp, i + 1));
     });
 
-    if (typeof populateWorkingLocations === 'function') {
+    if (typeof populateWorkingLocations === "function") {
         populateWorkingLocations(list);
     }
-    if (typeof filterEmployeeTable === 'function') {
+    if (typeof filterEmployeeTable === "function") {
         filterEmployeeTable();
     }
 }
+
+// --- Inline edit -------------------------------------------------------
+function empLoadEditOptions() {
+    if (empEditOptions) return $.Deferred().resolve(empEditOptions).promise();
+    if (empEditOptionsLoading) return empEditOptionsLoading;
+    const dDept = $.Deferred(), dDesig = $.Deferred(), dLoc = $.Deferred(), dHours = $.Deferred();
+    const safe = (fn, d) => { try { fn(r => d.resolve(Array.isArray(r) ? r : [])); } catch (e) { d.resolve([]); } setTimeout(() => d.resolve([]), 15000); };
+    safe(cb => departmentlist_callback("", "", cb), dDept);
+    safe(cb => designationlist_callback("", "", cb), dDesig);
+    safe(cb => AttendanceLocationMaster_callback("all", "all", cb), dLoc);
+    safe(cb => WorkingHoursDataCallback(cb), dHours);
+    empEditOptionsLoading = $.when(dDept, dDesig, dLoc, dHours).then(function (dept, desig, loc, hours) {
+        empEditOptions = { dept: dept, desig: desig, loc: loc, hours: hours };
+        empEditOptionsLoading = null;
+        return empEditOptions;
+    });
+    return empEditOptionsLoading;
+}
+
+function empSelectHtml(items, valueKey, labelFn, current) {
+    let html = `<option value="" disabled ${current ? "" : "selected"}>Select</option>`;
+    items.forEach(function (it) {
+        const val = String(it[valueKey]);
+        html += `<option value="${empEsc(val)}" ${String(current) === val ? "selected" : ""}>${empEsc(labelFn(it))}</option>`;
+    });
+    return `<select class="form-select emp-modal-input">${html}</select>`;
+}
+
+// --- Edit modal (one field of one employee) -----------------------------
+var empEditCtx = null; // { empId, field }
+
+const EMP_FIELD_LABELS = {
+    FullName: "Employee Name", FatherName: "Father's Name", MobileNo: "Mobile Number",
+    DepartmentID: "Department", DesignationID: "Designation", WorkLocation: "Working Location",
+    WorkHourseId: "Working Hours", DateOfJoining: "Joining Date", EpfRegId: "EPF UAN",
+    EsicRegId: "ESIC IP No", BankName: "Bank Name", AccountNumber: "Account Number",
+    IFSCCode: "IFSC Code", NetSalary: "Net Salary (Monthly)"
+};
+
+function empFindEmp(empId) {
+    const $tr = $(`#emplistPayrolltbl tbody tr[data-empid="${empEsc(empId)}"]`);
+    return { $tr: $tr, emp: $tr.data("empData") };
+}
+
+function empOpenEditor($td) {
+    const $tr = $td.closest("tr");
+    const emp = $tr.data("empData");
+    const field = $td.data("field");
+    if (!emp || !field || empIsResigned(emp)) return;
+
+    empEditCtx = { empId: emp.EmployeeID, field: field };
+    const $modal = $("#empFieldEditModal");
+    $("#empFieldEditTitle").text("Edit " + (EMP_FIELD_LABELS[field] || field));
+    $("#empFieldEditWho").text(emp.EmployeeID + " - " + (emp.FullName || ""));
+    $("#empFieldEditHint").text("");
+    $("#empFieldEditSave").prop("disabled", false).html('<i class="ti ti-device-floppy me-1"></i>Save');
+
+    const textInput = (val, attrs) => `<input type="text" class="form-control emp-modal-input" value="${empEsc(val || "")}" ${attrs || ""}>`;
+    const setBody = (html, hint) => {
+        $("#empFieldEditBody").html(`<label class="form-label fw-semibold">${empEsc(EMP_FIELD_LABELS[field] || field)}</label>` + html);
+        if (hint) $("#empFieldEditHint").text(hint);
+        setTimeout(() => $("#empFieldEditBody").find("input, select").first().trigger("focus").trigger("select"), 250);
+    };
+
+    switch (field) {
+        case "FullName": {
+            const titles = ["", "Mr.", "Ms.", "Mrs.", "Miss"];
+            const tOpts = titles.map(t => `<option value="${t}" ${String(emp.TitleName || "") === t ? "selected" : ""}>${t || "-"}</option>`).join("");
+            $("#empFieldEditBody").html(`
+                <div class="row g-2">
+                    <div class="col-4 col-md-3"><label class="form-label fw-semibold">Title</label><select class="form-select" id="empNameTitle">${tOpts}</select></div>
+                    <div class="col-8 col-md-9"><label class="form-label fw-semibold">First Name <span class="text-danger">*</span></label><input type="text" class="form-control" id="empNameFirst" maxlength="150" value="${empEsc(emp.FirstName || "")}"></div>
+                    <div class="col-md-6"><label class="form-label fw-semibold">Middle Name</label><input type="text" class="form-control" id="empNameMiddle" maxlength="150" value="${empEsc(emp.MiddleName || "")}"></div>
+                    <div class="col-md-6"><label class="form-label fw-semibold">Last Name</label><input type="text" class="form-control" id="empNameLast" maxlength="150" value="${empEsc(emp.LastName || "")}"></div>
+                </div>`);
+            setTimeout(() => $("#empNameFirst").trigger("focus"), 250);
+            break;
+        }
+        case "FatherName": setBody(textInput(emp.FatherName, 'maxlength="150"')); break;
+        case "MobileNo": setBody(textInput(emp.MobileNo, 'maxlength="15" inputmode="numeric"'), "10 digit mobile number (country code optional)."); break;
+        case "EpfRegId": setBody(textInput(emp.EpfRegId, 'maxlength="95"'), "Saved as regid for DeductionID 1. Does not switch EPF on or off."); break;
+        case "EsicRegId": setBody(textInput(emp.EsicRegId, 'maxlength="95"'), "Saved as regid for DeductionID 3. Does not switch ESIC on or off."); break;
+        case "BankName": setBody(textInput(emp.BankName)); break;
+        case "AccountNumber": setBody(textInput(emp.AccountNumber, 'inputmode="numeric"')); break;
+        case "IFSCCode": setBody(textInput(emp.IFSCCode, 'maxlength="11" style="text-transform:uppercase"'), "11 characters, e.g. SBIN0001234."); break;
+        case "DateOfJoining":
+            setBody(`<input type="date" class="form-control emp-modal-input" value="${empEsc(emp.DateOfJoining && emp.DateOfJoining !== "0000-00-00" ? emp.DateOfJoining : "")}">`);
+            break;
+        case "NetSalary": {
+            const parts = `Now: Basic ₹${(parseFloat(emp.BasicSalary) || 0).toLocaleString("en-IN")} · HRA ₹${(parseFloat(emp.HRA) || 0).toLocaleString("en-IN")} · Conveyance ₹${(parseFloat(emp.ConveyanceAllowance) || 0).toLocaleString("en-IN")} · Special ₹${(parseFloat(emp.SpecialAllowance) || 0).toLocaleString("en-IN")}. `;
+            setBody(`<div class="input-group"><span class="input-group-text">₹</span><input type="number" min="1" step="0.01" class="form-control emp-modal-input" value="${empNetSalary(emp) || ""}"></div>`,
+                parts + "The new amount is split the same way (Special Allowance takes the balance). Applies from the next salary calculation.");
+            break;
+        }
+        default:
+            $("#empFieldEditBody").html(`<div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Loading options...</div>`);
+            empLoadEditOptions().then(function (opt) {
+                if (!empEditCtx || empEditCtx.field !== field) return;
+                const sel = empSelectHtml;
+                if (field === "DepartmentID") {
+                    setBody(sel(opt.dept, "DepartmentID", it => it.DepartmentName, emp.DepartmentID));
+                } else if (field === "DesignationID") {
+                    setBody(sel(opt.desig, "DesignationID", it => it.DesignationName, emp.DesignationID));
+                } else if (field === "WorkLocation") {
+                    const locs = opt.loc.slice();
+                    locs.push({ LocationId: "outoffice", LocationName: "Outside Office" });
+                    setBody(sel(locs, "LocationId", it => it.LocationName, emp.LocationId), "\"Outside Office\" lets the employee mark attendance from anywhere.");
+                } else if (field === "WorkHourseId") {
+                    const fmt = t => (typeof formatTime_Hi === "function" ? formatTime_Hi(t) : t);
+                    setBody(sel(opt.hours, "id", it => `${it.working_hour_name} (${fmt(it.start_time)} - ${fmt(it.end_time)})`, emp.WorkHourseId), "Also updates the In / Out time used for late / early marking.");
+                }
+            });
+    }
+    $modal.modal("show");
+}
+
+// apply a saved change to every copy of this employee (Active / Total / New Joiner lists)
+function empApplyChange(empId, changes) {
+    if (typeof employeeSummaryData === "undefined") return;
+    Object.keys(employeeSummaryData).forEach(function (k) {
+        (employeeSummaryData[k]?.list || []).forEach(function (e) {
+            if (String(e.EmployeeID) === String(empId)) Object.assign(e, changes);
+        });
+    });
+}
+
+function empSaveEditor() {
+    if (!empEditCtx) return;
+    const field = empEditCtx.field;
+    const found = empFindEmp(empEditCtx.empId);
+    const emp = found.emp;
+    if (!emp) { $("#empFieldEditModal").modal("hide"); return; }
+
+    const fd = new FormData();
+    fd.append("addedby", $("body").data("loginname") || "");
+    fd.append("companyid", $("body").data("companyid"));
+    fd.append("subcompanyid", $("body").data("subcompanyid"));
+    fd.append("projectid", $("body").data("projectid"));
+    fd.append("EmployeeID", emp.EmployeeID);
+    fd.append("field", field);
+
+    let value = "", $input = $();
+    if (field === "FullName") {
+        const first = ($("#empNameFirst").val() || "").trim();
+        if (!first) { alertmessage("error", "First Name is required"); $("#empNameFirst").focus(); return; }
+        value = first;
+        fd.append("TitleName", $("#empNameTitle").val() || "");
+        fd.append("FirstName", first);
+        fd.append("MiddleName", ($("#empNameMiddle").val() || "").trim());
+        fd.append("LastName", ($("#empNameLast").val() || "").trim());
+    } else {
+        $input = $("#empFieldEditBody .emp-modal-input");
+        if (!$input.length) return; // options still loading
+        value = ($input.val() || "").trim();
+        if (field === "IFSCCode") value = value.toUpperCase();
+
+        if (field === "MobileNo" && value !== "" && !/^\+?[0-9]{10,13}$/.test(value)) {
+            alertmessage("error", "Enter a valid Mobile Number"); $input.focus(); return;
+        }
+        if (field === "IFSCCode" && value !== "" && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(value)) {
+            alertmessage("error", "Enter a valid 11-character IFSC Code (e.g. SBIN0001234)"); $input.focus(); return;
+        }
+        if (["DepartmentID", "DesignationID", "WorkLocation", "WorkHourseId", "DateOfJoining"].includes(field) && value === "") {
+            alertmessage("error", "Please select a value"); $input.focus(); return;
+        }
+        if (field === "NetSalary") {
+            const amt = parseFloat(value);
+            if (!(amt > 0)) { alertmessage("error", "Enter a valid Net Salary amount"); $input.focus(); return; }
+            if (amt === empNetSalary(emp)) { $("#empFieldEditModal").modal("hide"); return; } // unchanged
+        }
+    }
+    fd.append("value", value);
+
+    const $btn = $("#empFieldEditSave");
+    $btn.prop("disabled", true).html('<span class="spinner-border spinner-border-sm me-1"></span>Saving...');
+    $.ajax({
+        type: "POST",
+        url: $("body").data("routurl") + "modal/hrm_modal.php?action=updateEmployeeSingleField",
+        data: fd, contentType: false, processData: false, cache: false, dataType: "json",
+        success: function (res) {
+            if (!res || res.status !== "success") {
+                alertmessage("error", (res && res.message) || "Update failed");
+                $btn.prop("disabled", false).html('<i class="ti ti-device-floppy me-1"></i>Save');
+                return;
+            }
+            const saved = (res.value !== undefined) ? res.value : value;
+            const changes = {};
+            const label = $input.is("select") ? $input.find("option:selected").text().trim() : saved;
+            switch (field) {
+                case "FullName":
+                    Object.assign(changes, { FullName: saved, TitleName: res.TitleName, FirstName: res.FirstName, MiddleName: res.MiddleName, LastName: res.LastName });
+                    break;
+                case "DepartmentID": changes.DepartmentID = saved; changes.DepartmentName = label; break;
+                case "DesignationID": changes.DesignationID = saved; changes.DesignationName = label; break;
+                case "WorkLocation":
+                    changes.LocationId = saved;
+                    changes.attendanceType = res.attendanceType || (saved === "outoffice" ? "outoffice" : "office");
+                    changes.LocationName = saved === "outoffice" ? "" : label;
+                    break;
+                case "WorkHourseId": changes.WorkHourseId = saved; changes.InTime = res.InTime || emp.InTime; changes.OutTime = res.OutTime || emp.OutTime; break;
+                case "NetSalary": Object.assign(changes, res.breakup || { NetSalary: saved, GrossSalary: saved }); break;
+                default: changes[field] = saved;
+            }
+            empApplyChange(emp.EmployeeID, changes);
+            Object.assign(emp, changes);
+            const $tr = empFindEmp(emp.EmployeeID).$tr;
+            const $newTr = empBuildRow(emp, $tr.find(".emp-sno").text());
+            $tr.replaceWith($newTr);
+            $newTr.addClass("table-success");
+            setTimeout(() => $newTr.removeClass("table-success"), 1500);
+            if (field === "WorkLocation" && typeof populateWorkingLocations === "function") {
+                populateWorkingLocations(employeeSummaryData[empListCurrentType]?.list || []);
+            }
+            empEditCtx = null;
+            $("#empFieldEditModal").modal("hide");
+            if (typeof iziToast !== "undefined") {
+                iziToast.success({ title: "Saved", message: (EMP_FIELD_LABELS[field] || field) + " updated for " + emp.EmployeeID, position: "topRight", timeout: 1800 });
+            }
+        },
+        error: function () {
+            alertmessage("error", "Something went wrong while saving.");
+            $btn.prop("disabled", false).html('<i class="ti ti-device-floppy me-1"></i>Save');
+        }
+    });
+}
+
+$(document).on("click", "#emplistPayrolltbl .emp-edit-icon", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    empOpenEditor($(this).closest("td"));
+});
+$(document).on("keydown", "#emplistPayrolltbl .emp-edit-icon", function (e) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); empOpenEditor($(this).closest("td")); }
+});
+$(document).on("click", "#empFieldEditSave", function () { empSaveEditor(); });
+$(document).on("keydown", "#empFieldEditModal input", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); empSaveEditor(); }
+});
+$(document).on("hidden.bs.modal", "#empFieldEditModal", function () {
+    empEditCtx = null;
+    $("#empFieldEditBody").empty();
+});
 
 
 function removEmployeeFromMaster(rmemid, rmremark, dor, btnid, callback) {
@@ -6011,6 +6377,67 @@ function getKpiHeaderText(dataKey) {
     return headerMap[dataKey] || "Employee Attendance";
 }
 
+// 🔃 Column sort state for #attendanceviewbyadmin (kept across auto-refresh)
+var attendanceSort = { key: null, dir: 'asc' };
+
+function attendanceSortValue(row, key) {
+    let v = row[key];
+    if (v === undefined || v === null) return null;
+    v = String(v).trim();
+    if (v === '' || v === '-' || (key === 'markout' && v === 'MIS')) return null; // blanks / missing mark-out always go last
+    if (key === 'employeeid' || key === 'workingduration') {
+        const n = parseFloat(v);
+        return isNaN(n) ? v.toLowerCase() : n;
+    }
+    if (key === 'attendancedate') {
+        const t = Date.parse(v.split(' to ')[0].replace(/-/g, ' '));
+        return isNaN(t) ? v.toLowerCase() : t;
+    }
+    return v.toLowerCase(); // names, HH:MM:SS times, status, location
+}
+
+function sortAttendanceRows(rows) {
+    if (!attendanceSort.key) return rows;
+    const key = attendanceSort.key, mul = attendanceSort.dir === 'asc' ? 1 : -1;
+    return rows
+        .map((row, idx) => ({ row, idx, val: attendanceSortValue(row, key) }))
+        .sort((a, b) => {
+            if (a.val === null && b.val === null) return a.idx - b.idx;
+            if (a.val === null) return 1;
+            if (b.val === null) return -1;
+            if (typeof a.val === 'number' && typeof b.val === 'number') return (a.val - b.val) * mul || a.idx - b.idx;
+            return String(a.val).localeCompare(String(b.val), undefined, { numeric: true }) * mul || a.idx - b.idx;
+        })
+        .map(x => x.row);
+}
+
+function updateAttendanceSortIcons() {
+    $("#attendanceviewbyadmin thead th[data-sort]").each(function () {
+        const key = $(this).data("sort");
+        let icon = 'ti-arrows-sort opacity-50';
+        if (attendanceSort.key && key === attendanceSort.key) {
+            icon = attendanceSort.dir === 'asc' ? 'ti-sort-ascending' : 'ti-sort-descending';
+        }
+        $(this).find(".att-sort-icon").attr("class", "ti " + icon + " att-sort-icon ms-1");
+    });
+}
+
+$(document).on("click", "#attendanceviewbyadmin thead th[data-sort]", function () {
+    const key = $(this).data("sort");
+    if (key === 'sno') {
+        attendanceSort = { key: null, dir: 'asc' }; // S.No → back to original order
+    } else if (attendanceSort.key === key) {
+        attendanceSort.dir = attendanceSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+        attendanceSort = { key: key, dir: 'asc' };
+    }
+    const $activeCard = $(".kpi-card.active");
+    if ($activeCard.length && typeof attendanceSummaryData !== 'undefined') {
+        const dataKey = $activeCard.data("view");
+        renderAttendanceTable(dataKey, getKpiHeaderText(dataKey));
+    }
+});
+
 function renderAttendanceTable(dataKey, headerText) {
     let tableData = attendanceSummaryData[dataKey] || [];
 
@@ -6033,7 +6460,10 @@ function renderAttendanceTable(dataKey, headerText) {
     if (dataKey === 'absentdata' && selectedSubFilter) {
         tableData = tableData.filter(row => row.status === selectedSubFilter);
     }
-    
+
+    tableData = sortAttendanceRows(tableData);
+    updateAttendanceSortIcons();
+
     let tbodyHtml = "";
     // 🔹 Update header
     $("#employeeattheader").text(headerText);
@@ -6061,6 +6491,11 @@ function renderAttendanceTable(dataKey, headerText) {
                 
                 statusBadge = `<span class="badge ${badgeClass}">${row.status}</span>`;
             }
+            // Map pins for the exact punch GPS (In / Out)
+            const mapPin = (lat, lng, label) => (lat && lng && parseFloat(lat) !== 0)
+                ? ` <a href="https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}" target="_blank" rel="noopener" title="${label} location on map"><i class="ti ti-map-pin text-danger"></i></a>`
+                : '';
+            const locationHtml = (row.location || '-') + mapPin(row.inLat, row.inLng, 'Mark-In') + mapPin(row.outLat, row.outLng, 'Mark-Out');
             tbodyHtml += `
                 <tr>
                     <td class="text-center">${i + 1}</td>
@@ -6071,7 +6506,7 @@ function renderAttendanceTable(dataKey, headerText) {
                     <td>${row.markout || '-'}</td>
                     <td>${row.workingduration || '-'}</td>
                     <td>${statusBadge}</td>
-                    <td>${row.location || '-'}</td>
+                    <td>${locationHtml}</td>
                 </tr>
             `;
         });

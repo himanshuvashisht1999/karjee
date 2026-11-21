@@ -292,6 +292,9 @@ function createProvisionalOrderPDF($conn, $authconn, $krfconn, $companyid, $subc
         $ttlfreight = (float) $fRow['payable_freightamount'];
     }
 
+    
+    
+
     $ttlamount = 0;
     $ttldiscount = 0;
     foreach ($items as $item) {
@@ -521,7 +524,14 @@ function createProvisionalOrderPDF($conn, $authconn, $krfconn, $companyid, $subc
     $count = 1;
     $totalProductQty = 0;
     $totalProductAmount = 0;
+    $itmsuffix=" Pcs";
     foreach ($items as $item) {
+
+        $producttypeid = $krfconn->query("SELECT ProductTypeID FROM karjeefarm.product_master WHERE ProductID = '".$krfconn->real_escape_string($item['product_id'])."' LIMIT 1")->fetch_assoc()['ProductTypeID'] ?? '';
+        if($producttypeid=="46"){
+            $itmsuffix = " Tray";
+        }
+
         $st = strtolower(trim($item['status'] ?? ''));
         $pQty = (float)($item['quantity'] ?? 0);
         $tedit = trim($item['tedit'] ?? '');
@@ -535,7 +545,7 @@ function createProvisionalOrderPDF($conn, $authconn, $krfconn, $companyid, $subc
         $totalProductQty += $pQty;
         $totalProductAmount += $pAmt;
 
-        $qtyStr = $pQty . ' Pcs';
+        $qtyStr = $pQty . $itmsuffix;
         $delDateStr = !empty($item['expecteddeliverydate']) ? date('d-M-Y', strtotime($item['expecteddeliverydate'])) : 'N/A';
         $rateStr = number_format($pRate, 2);
         $discStr = number_format($pDisc, 2);
@@ -565,7 +575,7 @@ function createProvisionalOrderPDF($conn, $authconn, $krfconn, $companyid, $subc
     $pdf->SetFont('freesans', 'B', 8.5);
     $pdf->SetFillColor(245, 245, 245);
     $pdf->Cell($w[0] + $w[1], 5.5, 'Total', 1, 0, 'C', 1);
-    $pdf->Cell($w[2], 5.5, $totalProductQty . ' Pcs', 1, 0, 'C', 1);
+    $pdf->Cell($w[2], 5.5, $totalProductQty . $itmsuffix, 1, 0, 'C', 1);
     $pdf->Cell($w[3], 5.5, '', 1, 0, 'C', 1);
     $pdf->Cell($w[4], 5.5, ($ttldiscount > 0 ? number_format($ttldiscount, 2) : '0.00'), 1, 0, 'C', 1);
     $pdf->Cell($w[5], 5.5, '', 1, 0, 'C', 1);
@@ -1329,7 +1339,12 @@ function createSalesOrderPDF($conn, $authconn, $krfconn, $companyid, $subcompany
     $totalProductQty = 0;
     $totalProductAmount = 0;
     $totalProductDiscount = 0;
-    foreach ($items as $item) {
+    $itmsuffix = " Pcs";
+    foreach ($items as $item) {$producttypeid = $krfconn->query("SELECT ProductTypeID FROM karjeefarm.product_master WHERE ProductID = '".$krfconn->real_escape_string($item['product_id'])."' LIMIT 1")->fetch_assoc()['ProductTypeID'] ?? '';
+        if($producttypeid=="46"){
+            $itmsuffix = " Tray";
+        }
+
         $st = strtolower(trim($item['status'] ?? ''));
         $pQty = (float)($item['quantity'] ?? 0);
         if ($st === 'cancelled' || $st === 'cancel' || $pQty <= 0) {
@@ -1343,7 +1358,7 @@ function createSalesOrderPDF($conn, $authconn, $krfconn, $companyid, $subcompany
         $totalProductAmount += $pAmt;
         $totalProductDiscount += $pDisc;
 
-        $qtyStr = $pQty . ' Pcs';
+        $qtyStr = $pQty . $itmsuffix;
         $delDateStr = !empty($item['deliverydate']) ? date('d-M-Y', strtotime($item['deliverydate'])) : 'N/A';
         $rateStr = number_format($pRate, 2);
         $discStr = number_format($pDisc, 2);
@@ -1373,7 +1388,7 @@ function createSalesOrderPDF($conn, $authconn, $krfconn, $companyid, $subcompany
     $pdf->SetFont('freesans', 'B', 8.5);
     $pdf->SetFillColor(245, 245, 245);
     $pdf->Cell($w[0] + $w[1], 5.5, 'Total', 1, 0, 'C', 1);
-    $pdf->Cell($w[2], 5.5, $totalProductQty . ' Pcs', 1, 0, 'C', 1);
+    $pdf->Cell($w[2], 5.5, $totalProductQty . $itmsuffix, 1, 0, 'C', 1);
     $pdf->Cell($w[3], 5.5, '', 1, 0, 'C', 1);
     $pdf->Cell($w[4], 5.5, ($totalProductDiscount > 0 ? number_format($totalProductDiscount, 2) : '0.00'), 1, 0, 'C', 1);
     $pdf->Cell($w[5], 5.5, '', 1, 0, 'C', 1);

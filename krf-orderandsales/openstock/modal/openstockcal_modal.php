@@ -154,6 +154,7 @@ if ($action === 'get_open_stock_summary') {
             WHERE {$projWhereCons}
               AND LOWER(TRIM(COALESCE(c.status, ''))) NOT IN ('cancelled', 'cancel')
               AND LOWER(TRIM(COALESCE(c.confirmstatus, ''))) NOT IN ('cancelled', 'cancel')
+              AND (c.tedit IS NULL OR c.tedit = '' OR c.tedit = '0')
             GROUP BY c.product_id
         ) cons_agg ON cons_agg.product_id = p.ProductID
         
@@ -165,7 +166,7 @@ if ($action === 'get_open_stock_summary') {
             FROM krf_readystock_allocation rsa
             WHERE {$projWhereAlloc}
               AND LOWER(TRIM(COALESCE(rsa.status, ''))) NOT IN ('cancelled', 'cancel')
-              AND (rsa.tedit IS NULL OR rsa.tedit = '')
+              AND (rsa.tedit IS NULL OR rsa.tedit = '' OR rsa.tedit = '0')
             GROUP BY rsa.productid
         ) alloc_agg ON alloc_agg.productid = p.ProductID
         
@@ -177,6 +178,7 @@ if ($action === 'get_open_stock_summary') {
             FROM sales_invoice_items sii
             WHERE {$projWhereInv}
               AND LOWER(TRIM(COALESCE(sii.status, ''))) = 'dispatched'
+              AND (sii.tedit IS NULL OR sii.tedit = '' OR sii.tedit = '0')
             GROUP BY sii.productid
         ) inv_agg ON inv_agg.productid = p.ProductID
         
@@ -397,6 +399,7 @@ if ($action === 'get_product_stockorders') {
             FROM sales_invoice_items sii
             WHERE {$projWhereInv}
               AND LOWER(TRIM(COALESCE(sii.status, ''))) = 'dispatched'
+              AND (sii.tedit IS NULL OR sii.tedit = '' OR sii.tedit = '0')
             GROUP BY CONVERT(sii.stockorder_no USING utf8mb4)
         ) inv ON inv.stockorder_no = stk.stockorder_no
 
@@ -685,6 +688,8 @@ if ($action === 'get_stockorder_deep_details') {
             AND (si.projectid = sii.projectid OR si.projectid = 17)
         WHERE sii.stockorder_no = '{$safeStk}'
           AND LOWER(TRIM(COALESCE(sii.status, ''))) = 'dispatched'
+          AND (sii.tedit IS NULL OR sii.tedit = '' OR sii.tedit = '0')
+          AND (si.tedit IS NULL OR si.tedit = '' OR si.tedit = '0')
         ORDER BY sii.id DESC
     ";
     $invRes = $krfconn->query($invSql);

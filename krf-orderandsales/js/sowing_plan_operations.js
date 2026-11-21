@@ -932,8 +932,10 @@ $(document).on("click", ".PrintSavedQrBtn", async function () {
     }
 });
 
-$(document).on("click", ".readytoprintgBoxbtntd", async function () {
-    let btn = $(this);
+/**
+ * Helper to print germination box QR labels (supports batch, selected subset, or single box)
+ */
+async function executeGerminationBoxesPrinting(btn, gboxdata, productionorderno, seedname) {
     let originalHtml = btn.data("original-html") || btn.html();
     btn.data("original-html", originalHtml);
 
@@ -942,14 +944,6 @@ $(document).on("click", ".readytoprintgBoxbtntd", async function () {
 
     btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Printing...');
 
-    let raw = btn.data("gboxdata");
-    let productionorderno = btn.data("productionorderno") ?? '';
-    let seedname = btn.data("seedname") ?? '';
-
-    let gboxdata = [];
-    if (raw) {
-        gboxdata = (typeof raw === 'string') ? JSON.parse(decodeURIComponent(raw)) : raw;
-    }
     let totalboxes = gboxdata.length;
     let grcodelist = [];
     let packingdatelb = "";
@@ -957,9 +951,9 @@ $(document).on("click", ".readytoprintgBoxbtntd", async function () {
     let traycountinaboxlb = "";
     gboxdata.forEach(item => {
         if (item.qrcode) {
-            packingdatelb = item.boxpackingdate;
-            openingdatelb = item.boxopeningdate;
-            traycountinaboxlb = item.traycountinbox;
+            packingdatelb = item.boxpackingdate || item.packingdate || packingdatelb;
+            openingdatelb = item.boxopeningdate || item.openingdate || openingdatelb;
+            traycountinaboxlb = item.traycountinbox || item.traycount || traycountinaboxlb;
             grcodelist.push({
                 barcode: item.qrcode
             });
@@ -1002,7 +996,7 @@ $(document).on("click", ".readytoprintgBoxbtntd", async function () {
     formData.append('packingdate', packingdatelb);
     formData.append('openingdate', openingdatelb);
     formData.append('traycountinaboxlb', traycountinaboxlb);
-    formData.append('totalboxcount', totalboxes); // Use totalboxes variable
+    formData.append('totalboxcount', totalboxes);
 
     formData.append('grcodelist', JSON.stringify(grcodelist));
 
@@ -1023,7 +1017,6 @@ $(document).on("click", ".readytoprintgBoxbtntd", async function () {
         }
 
         // Trigger actual printing via QZ Tray
-        // console.log(textData);
         await printLabel(textData);
 
     } catch (error) {
@@ -1038,6 +1031,122 @@ $(document).on("click", ".readytoprintgBoxbtntd", async function () {
     } finally {
         btn.prop("disabled", false).html(originalHtml);
     }
+}
+
+// Print Whole Batch QR
+$(document).on("click", ".readytoprintgBoxbtntd", async function () {
+    let btn = $(this);
+    let raw = btn.data("gboxdata");
+    let productionorderno = btn.data("productionorderno") ?? '';
+    let seedname = btn.data("seedname") ?? '';
+
+    let gboxdata = [];
+    if (raw) {
+        gboxdata = (typeof raw === 'string') ? JSON.parse(decodeURIComponent(raw)) : raw;
+    }
+    await executeGerminationBoxesPrinting(btn, gboxdata, productionorderno, seedname);
+});
+
+// Toggle Expand/Collapse for Batch Boxes Table
+$(document).on("click", ".btn-toggle-batch-boxes", function (e) {
+    e.preventDefault();
+    const targetId = $(this).data("batchtarget");
+    const collapseDiv = $("#" + targetId);
+    const icon = $(this).find(".toggle-icon");
+
+    collapseDiv.slideToggle(200, function () {
+        if (collapseDiv.is(":visible")) {
+            icon.removeClass("fa-chevron-down").addClass("fa-chevron-up");
+        } else {
+            icon.removeClass("fa-chevron-up").addClass("fa-chevron-down");
+        }
+    });
+});
+
+// Update Batch Box Checkbox UI state and Print Selected button
+function updateBatchBoxSelectionUI(targetId) {
+    const container = $("#" + targetId);
+    const checkboxes = container.find(".single-box-checkbox");
+    const totalCount = checkboxes.length;
+    const checkedCount = checkboxes.filter(":checked").length;
+    const selectAll = container.find(".select-all-batch-boxes");
+    const printSelectedBtn = container.find(".print-selected-boxes-btn");
+    const statusText = container.find(".batch-selection-status");
+
+    selectAll.prop("checked", totalCount > 0 && checkedCount === totalCount);
+    selectAll.prop("indeterminate", checkedCount > 0 && checkedCount < totalCount);
+
+    statusText.text(`${checkedCount} of ${totalCount} selected`);
+
+    if (checkedCount > 0) {
+        printSelectedBtn.find(".selected-num").text(checkedCount);
+        printSelectedBtn.slideDown(150);
+    } else {
+        printSelectedBtn.slideUp(150);
+    }
+}
+
+// Select All Checkboxes in a Batch
+$(document).on("change", ".select-all-batch-boxes", function () {
+    const isChecked = $(this).is(":checked");
+    const targetId = $(this).data("batchtarget");
+    const container = $("#" + targetId);
+
+    container.find(".single-box-checkbox").prop("checked", isChecked);
+    updateBatchBoxSelectionUI(targetId);
+});
+
+// Individual Box Checkbox Change
+$(document).on("change", ".single-box-checkbox", function () {
+    const targetId = $(this).data("batchtarget");
+    updateBatchBoxSelectionUI(targetId);
+});
+
+// Print Selected Boxes QR
+$(document).on("click", ".print-selected-boxes-btn", async function () {
+    let btn = $(this);
+    let targetId = btn.data("batchtarget");
+    let container = $("#" + targetId);
+    let productionorderno = btn.data("productionorderno") ?? '';
+    let seedname = btn.data("seedname") ?? '';
+
+    let selectedBoxes = [];
+    container.find(".single-box-checkbox:checked").each(function () {
+        let cb = $(this);
+        selectedBoxes.push({
+            boxid: cb.data("boxid"),
+            qrcode: cb.data("qrcode"),
+            boxpackingdate: cb.data("packingdate"),
+            boxopeningdate: cb.data("openingdate"),
+            traycountinbox: cb.data("traycount")
+        });
+    });
+
+    if (selectedBoxes.length === 0) {
+        Swal.fire({
+            icon: 'info',
+            title: 'No Boxes Selected',
+            text: 'Please select at least one box using the checkboxes to print.'
+        });
+        return;
+    }
+
+    await executeGerminationBoxesPrinting(btn, selectedBoxes, productionorderno, seedname);
+});
+
+// Print Single Box QR directly from table row
+$(document).on("click", ".print-single-box-btn", async function () {
+    let btn = $(this);
+    let raw = btn.data("boxdata");
+    let productionorderno = btn.data("productionorderno") ?? '';
+    let seedname = btn.data("seedname") ?? '';
+
+    let boxdata = [];
+    if (raw) {
+        boxdata = (typeof raw === 'string') ? JSON.parse(decodeURIComponent(raw)) : raw;
+    }
+
+    await executeGerminationBoxesPrinting(btn, boxdata, productionorderno, seedname);
 });
 
 

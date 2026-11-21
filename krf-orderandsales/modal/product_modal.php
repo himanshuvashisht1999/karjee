@@ -4845,6 +4845,17 @@ if ($action == "UpdateEditedProductStockOrder") {
     echo json_encode($sowingdata, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK);
     exit;
 
+} else if ($action == "GetOrderGerminatedBoxesDetails") {
+    $projectid = !empty($_REQUEST['projectid']) ? (int)$_REQUEST['projectid'] : (!empty($_SESSION['projectid']) ? (int)$_SESSION['projectid'] : 0);
+    $stockorderno = trim($_REQUEST['stockorderno'] ?? '');
+    $roottype = trim($_REQUEST['roottype'] ?? '');
+    $resData = getOrderGerminatedBoxesDetails($krfconn, $authconn, $projectid, $stockorderno, $roottype);
+    if (ob_get_length()) {
+        ob_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($resData, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK);
+    exit;
 } else if ($action == "GetPendingAllocationGBoxesDataWithDate") {
     $projectid = !empty($_REQUEST['projectid']) ? (int)$_REQUEST['projectid'] : (!empty($_SESSION['projectid']) ? (int)$_SESSION['projectid'] : 0);
     $dateFrom = $_REQUEST['datefrom'] ?? 'all';

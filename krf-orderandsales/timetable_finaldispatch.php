@@ -4877,10 +4877,13 @@ $(document).ready(function() {
             } else if (row.has_partial_pending == 1 || (row.is_partial_tranche == 1 && parseInt(row.original_total_order_qty || 0) > parseInt(row.fulfilled_qty || row.allocated_qty || row.reserved_qty || 0))) {
                 let currentAllocQty = parseInt(row.fulfilled_qty || row.allocated_qty || row.reserved_qty || row.order_qty || 0);
                 let origOrderTotal = parseInt(row.original_total_order_qty || row.order_qty || 0);
+                let isDispatchedTranche = (row.dispatch_status_code === 'dispatched' || parseInt(row.dispatched_plant_qty || 0) > 0);
+                let trancheLabel = isDispatchedTranche ? 'Partially Dispatched' : 'Partially Allocated';
+                let trancheIcon = isDispatchedTranche ? 'fa-truck' : 'fa-truck-loading';
                 partialBadgeHtml = `
                     <div class="mb-1">
                         <span class="badge bg-info-subtle text-info-emphasis border border-info px-2 py-0.5 shadow-2xs" style="font-size: 11px;">
-                            <i class="fa fa-truck-loading me-1"></i>Partially Allocated (${currentAllocQty.toLocaleString()} Plants of ${origOrderTotal.toLocaleString()} Order)
+                            <i class="fa ${trancheIcon} me-1"></i>${trancheLabel} (${currentAllocQty.toLocaleString()} Plants of ${origOrderTotal.toLocaleString()} Order)
                         </span>
                     </div>
                 `;

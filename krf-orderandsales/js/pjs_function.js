@@ -1959,7 +1959,22 @@ function sowingtrysofgerminationbox(stockorderno, roottype = "Root", displaydivi
                 // packingdate
                 // openingdate
 
-                headerLabels += `<span class="badge bg-success text-white px-3 py-2 shadow-sm" style="font-size: 0.9rem;"><i class="fa fa-box me-2"></i>${totalBoxes} Boxes</span>`;
+                // Get current product name from modal header to use in printing
+                const SeedName = item.SeedName;
+                const safeSeedName = (SeedName || '').replace(/"/g, '&quot;');
+                const batchKey = item.boxbatchno ? String(item.boxbatchno).replace(/[^a-zA-Z0-9_-]/g, '_') : ('batch_' + boxno);
+
+                if (totalBoxes > 0) {
+                    headerLabels += `<button type="button" class="btn btn-sm btn-success text-white px-3 py-2 shadow-sm btn-toggle-batch-boxes" 
+                        data-batchtarget="batchBoxesCollapse_${batchKey}"
+                        style="font-size: 0.9rem; font-weight: 600; border-radius: 8px; border: none; cursor: pointer; transition: all 0.2s ease; display: inline-flex; align-items: center;"
+                        title="Click to view and print individual boxes">
+                        <i class="fa fa-box me-2"></i><span>${totalBoxes} Boxes</span>
+                        <i class="fa fa-chevron-down ms-2 toggle-icon" style="font-size: 0.8rem; transition: transform 0.2s;"></i>
+                    </button>`;
+                } else {
+                    headerLabels += `<span class="badge bg-secondary text-white px-3 py-2 shadow-sm" style="font-size: 0.9rem;"><i class="fa fa-box me-2"></i>0 Boxes</span>`;
+                }
 
                 if (item.batch_status) {
                     let stBadgeBg = "bg-info text-dark";
@@ -1971,9 +1986,6 @@ function sowingtrysofgerminationbox(stockorderno, roottype = "Root", displaydivi
                     }
                     headerLabels += `<span class="badge ${stBadgeBg} px-3 py-2 ms-2 shadow-sm" style="font-size: 0.9rem;"><i class="fa fa-tag me-1"></i>${item.batch_status}</span>`;
                 }
-
-                // Get current product name from modal header to use in printing
-                const SeedName = item.SeedName;
 
                 // Determine if removal is allowed
                 const statusStr = String(item.batch_status || item.status || "").toLowerCase().replace(/[\s_-]/g, "");
@@ -2003,6 +2015,115 @@ function sowingtrysofgerminationbox(stockorderno, roottype = "Root", displaydivi
                     }
                 }
 
+                let boxesTableHtml = "";
+                if (item.boxes && item.boxes.length > 0) {
+                    let rowsHtml = "";
+                    item.boxes.forEach((b, idx) => {
+                        const pkDateStr = b.boxpackingdate ? changeDateFormatYmd_dMY(b.boxpackingdate) : (item.packingdate ? changeDateFormatYmd_dMY(item.packingdate) : '-');
+                        const opDateStr = b.boxopeningdate ? changeDateFormatYmd_dMY(b.boxopeningdate) : (item.openingdate ? changeDateFormatYmd_dMY(item.openingdate) : '-');
+                        const bStatus = b.status || item.batch_status || 'ReceivedAfterSowing';
+                        let bStBadge = "bg-info text-dark";
+                        const bStLow = String(bStatus).toLowerCase();
+                        if (bStLow.includes("polyhouse") || bStLow.includes("allocated")) {
+                            bStBadge = "bg-secondary text-white";
+                        } else if (bStLow.includes("receivedaftersowing")) {
+                            bStBadge = "bg-primary text-white";
+                        }
+
+                        const singleBoxData = [{
+                            boxid: b.boxid,
+                            qrcode: b.qrcode,
+                            boxpackingdate: b.boxpackingdate || item.packingdate,
+                            boxopeningdate: b.boxopeningdate || item.openingdate,
+                            traycountinbox: b.traycountinbox
+                        }];
+
+                        rowsHtml += `
+                        <tr class="align-middle" style="background: #ffffff;">
+                            <td class="text-center">
+                                <input type="checkbox" class="form-check-input single-box-checkbox" 
+                                    data-batchtarget="batchBoxesCollapse_${batchKey}"
+                                    data-boxid="${b.boxid || ''}"
+                                    data-qrcode="${b.qrcode}"
+                                    data-packingdate="${b.boxpackingdate || item.packingdate || ''}"
+                                    data-openingdate="${b.boxopeningdate || item.openingdate || ''}"
+                                    data-traycount="${b.traycountinbox || ''}"
+                                    style="cursor: pointer; width: 1.15em; height: 1.15em;">
+                            </td>
+                            <td class="text-center fw-semibold text-muted">${idx + 1}</td>
+                            <td class="text-center">
+                                <span class="badge bg-light text-dark border px-2 py-1 font-monospace" style="font-size: 0.88rem; letter-spacing: 0.5px;">
+                                    <i class="fa fa-qrcode text-primary me-1"></i>${b.qrcode}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-light text-primary border border-primary px-2 py-1 fw-bold">${b.traycountinbox || '0'} Trays</span>
+                            </td>
+                            <td class="text-center text-nowrap">${pkDateStr}</td>
+                            <td class="text-center text-nowrap fw-semibold text-success">${opDateStr}</td>
+                            <td class="text-center">
+                                <span class="badge ${bStBadge} px-2 py-1" style="font-size: 0.82rem;">${bStatus}</span>
+                            </td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-outline-success btn-sm print-single-box-btn py-1 px-2 shadow-sm"
+                                    data-boxdata="${encodeURIComponent(JSON.stringify(singleBoxData))}"
+                                    data-productionorderno="${stockorderno}"
+                                    data-seedname="${safeSeedName}"
+                                    title="Print single QR label for ${b.qrcode}">
+                                    <i class="fa fa-print me-1"></i>Print
+                                </button>
+                            </td>
+                        </tr>`;
+                    });
+
+                    boxesTableHtml = `
+                    <div class="batch-boxes-collapse mt-3 pt-3 border-top" id="batchBoxesCollapse_${batchKey}" style="display: none;">
+                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="fw-bold text-dark" style="font-size: 0.92rem;">
+                                    <i class="fa fa-boxes text-success me-1"></i> Individual Boxes in Batch ${item.boxbatchno || boxno}
+                                </span>
+                                <span class="badge bg-light text-muted border px-2 py-1 batch-selection-status" style="font-size: 0.82rem;">
+                                    0 of ${totalBoxes} selected
+                                </span>
+                            </div>
+                            <div>
+                                <button type="button" class="btn btn-primary btn-sm print-selected-boxes-btn shadow-sm px-3 py-1"
+                                    data-batchtarget="batchBoxesCollapse_${batchKey}"
+                                    data-productionorderno="${stockorderno}"
+                                    data-seedname="${safeSeedName}"
+                                    style="display: none; background: linear-gradient(135deg, #4e73df, #2e59d9); border: none; font-weight: 600; border-radius: 8px;">
+                                    <i class="fa fa-print me-1"></i> Print Selected QR (<span class="selected-num">0</span>)
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-responsive rounded border shadow-sm bg-white">
+                            <table class="table table-hover table-striped table-sm mb-0">
+                                <thead class="table-light text-secondary text-uppercase" style="font-size: 0.78rem;">
+                                    <tr>
+                                        <th class="text-center" style="width: 45px;">
+                                            <input type="checkbox" class="form-check-input select-all-batch-boxes" 
+                                                data-batchtarget="batchBoxesCollapse_${batchKey}" 
+                                                title="Select / Deselect All Boxes"
+                                                style="cursor: pointer; width: 1.15em; height: 1.15em;">
+                                        </th>
+                                        <th class="text-center" style="width: 50px;">#</th>
+                                        <th class="text-center">Box QR Code</th>
+                                        <th class="text-center">Trays In Box</th>
+                                        <th class="text-center">Packing Date</th>
+                                        <th class="text-center">Opening Date</th>
+                                        <th class="text-center">Status</th>
+                                        <th class="text-center" style="width: 100px;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rowsHtml}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>`;
+                }
+
                 html += `
                 <div class="genratedboxqrcode card shadow-sm p-4 mb-4 ${bgClass}" style="border-radius: 16px; border: none; border-left: 6px solid #4e73df;">
                     <div class="row align-items-center g-3">
@@ -2012,12 +2133,13 @@ function sowingtrysofgerminationbox(stockorderno, roottype = "Root", displaydivi
                                 style="background: linear-gradient(135deg, #1cc88a, #17a673); border: none; font-weight: 600; border-radius: 10px;"
                                 data-gboxdata="${encodeURIComponent(JSON.stringify(item.boxes))}"
                                 data-productionorderno="${stockorderno}"
-                                data-seedname="${SeedName}">
+                                data-seedname="${safeSeedName}">
                                 <i class="fa fa-print me-2"></i> Print Batch QR
                             </button>
                             ${removeBtnHtml}
                         </div>
                     </div>
+                    ${boxesTableHtml}
                 </div>`;
                 boxno++;
             });

@@ -1,5 +1,8 @@
 <?php
 ob_start();
+if (session_status() === PHP_SESSION_NONE) {
+    @session_start();
+}
 @ini_set('display_errors', 1);
 error_reporting(0);
 
@@ -50,6 +53,12 @@ if ($action == "CheckUploadedAttendanceWithLocation") {
     $attyearmonth = $_POST['attyearmonth'] ?? null;
     $daterange = $_POST['daterange'] ?? null;
     $locationid = $_POST['locationid'] ?? null;
+    $loginroleid = 99;
+    if (isset($_POST['loginroleid']) && is_numeric($_POST['loginroleid'])) {
+        $loginroleid = intval($_POST['loginroleid']);
+    } else if (isset($_SESSION['loginroleid']) && is_numeric($_SESSION['loginroleid'])) {
+        $loginroleid = intval($_SESSION['loginroleid']);
+    }
     $attyrmnex = explode("-", $attyearmonth);
     $attYear = $attyrmnex[0] ?? date('Y');
     $attMonth = $attyrmnex[1] ?? date('m');
@@ -104,6 +113,7 @@ if ($action == "CheckUploadedAttendanceWithLocation") {
     $totalworkeddays = 0;
     $empcount = 0;
     $zerodayempcount = 0;
+    $zerobasiccount = 0;
     // Initialize global counters
     $globalCalStatusCount = 0;
     $globalApprdStatusCount = 0;
@@ -127,10 +137,12 @@ if ($action == "CheckUploadedAttendanceWithLocation") {
             $isRowCalculated = false;
             $isRowApproved = false;
             $BasicLabourpayment = 0;
+            $paymentMethod = "Cash";
             if (count($gsldata) > 0) {
                 $PayPerDay = $gsldata[0]['PayPerDay'] ?? 0;
                 $NetSalary = $gsldata[0]['NetSalary'] ?? 0;
                 $BasicLabourpayment = $gsldata[0]['basiclabourpayment'] ?? 0;
+                $paymentMethod = !empty($gsldata[0]['PaymentMethod']) ? $gsldata[0]['PaymentMethod'] : 'Cash';
                 $statusBadge = '<span class="badge badge-success">Calculated</span>';
                 $rowStatusAttr = 'Calculated';
 
@@ -155,6 +167,9 @@ if ($action == "CheckUploadedAttendanceWithLocation") {
                     $PayPerDay = $lbpayd[0]['PerDayPayment'];
                     $BasicLabourpayment = $PayPerDay * $totalPresentDays;
                     $NetSalary = $PayPerDay * $totalPresentDays;
+                    if (!empty($lbpayd[0]['PaymentMethod'])) {
+                        $paymentMethod = $lbpayd[0]['PaymentMethod'];
+                    }
                 }
                 $rowApprovedAttr = "";
             }
@@ -177,14 +192,38 @@ if ($action == "CheckUploadedAttendanceWithLocation") {
                     $totalwagesamount += $NetSalaryPayable;
                     $totalworkeddays += $totalPresentDays;
 
-                    $empname = $eemkey['FirstName'] . ' ' . $eemkey['MiddleName'] . ' ' . $eemkey['LastName'];
+                    $empname = trim(preg_replace('/\s+/', ' ', ($eemkey['FirstName'] ?? '') . ' ' . ($eemkey['MiddleName'] ?? '') . ' ' . ($eemkey['LastName'] ?? '')));
+                    $showMasterEdit = ($loginroleid <= 3);
+
+                    // Check if basic rate is not set (0, empty, null, or basic payment < 1)
+                    $payVal = (isset($PayPerDay) && is_numeric($PayPerDay)) ? floatval($PayPerDay) : 0;
+                    $basicAmtVal = (isset($BasicLabourpayment) && is_numeric($BasicLabourpayment)) ? floatval($BasicLabourpayment) : 0;
+                    $isZeroBasic = ($payVal <= 0 || $basicAmtVal < 1) ? 1 : 0;
+                    if ($isZeroBasic == 1) {
+                        $zerobasiccount++;
+                        if ($showMasterEdit) {
+                            $rateNotSetBadge = ' <span class="badge bg-danger ms-1 btnUpdateMasterWage" style="cursor:pointer;" title="Click to edit/update Master Wage & Payment Mode" data-employeeid="' . $eemkey['EmployeeID'] . '" data-employeename="' . htmlspecialchars($empname, ENT_QUOTES) . '" data-payperday="' . $PayPerDay . '" data-paymentmethod="' . htmlspecialchars($paymentMethod, ENT_QUOTES) . '"><i class="ti ti-edit me-1"></i>Rate Not Set</span>';
+                        } else {
+                            $rateNotSetBadge = ' <span class="badge bg-danger ms-1">Rate Not Set</span>';
+                        }
+                    } else {
+                        $rateNotSetBadge = '';
+                    }
+
+                    $masterEditBtn = "";
+                    if ($showMasterEdit) {
+                        $masterEditBtn = '<button type="button" class="btn btn-sm btn-outline-primary p-1 border-0 rounded-circle btnUpdateMasterWage" title="Edit/Update Master Wage & Payment Mode" data-employeeid="' . $eemkey['EmployeeID'] . '" data-employeename="' . htmlspecialchars($empname, ENT_QUOTES) . '" data-payperday="' . $PayPerDay . '" data-paymentmethod="' . htmlspecialchars($paymentMethod, ENT_QUOTES) . '" style="line-height: 1;"><i class="ti ti-edit fs-15 text-primary"></i></button>';
+                    }
 
                     // Fixed Variables: $overtimepayment and $otherpayment used correctly
-                    $emplt .= '<tr data-companyid="' . $companyid . '" data-subcompanyid="' . $subcompanyid . '" data-projectid="' . $projectid . '" data-employeeid="' . $eemkey['EmployeeID'] . '" data-employeename="' . $empname . '" data-calstatus="' . $rowStatusAttr . '" data-apprdstatus="' . $rowApprovedAttr . '" data-presentdays="' . str_replace(".00", "", $totalPresentDays) . '" data-datefrom="' . $dateFrom . '" data-dateto="' . $dateTo . '" data-attyear="' . $attYear . '" data-attmonth="' . $attMonth . '" data-incentivegrafting="' . $incentivegrafting . '" data-incentiveseasional="' . $incentiveseasional . '" data-overtimepayment="' . $overtimepayment . '" data-otherpayment="' . $otherpayment . '" data-basiclabourpayment="' . $BasicLabourpayment . '" data-netpayable="' . $NetSalaryPayable . '" data-locationid="' . $locationid . '">
+                    $emplt .= '<tr data-companyid="' . $companyid . '" data-subcompanyid="' . $subcompanyid . '" data-projectid="' . $projectid . '" data-employeeid="' . $eemkey['EmployeeID'] . '" data-employeename="' . htmlspecialchars($empname, ENT_QUOTES) . '" data-calstatus="' . $rowStatusAttr . '" data-apprdstatus="' . $rowApprovedAttr . '" data-presentdays="' . str_replace(".00", "", $totalPresentDays) . '" data-datefrom="' . $dateFrom . '" data-dateto="' . $dateTo . '" data-attyear="' . $attYear . '" data-attmonth="' . $attMonth . '" data-incentivegrafting="' . $incentivegrafting . '" data-incentiveseasional="' . $incentiveseasional . '" data-overtimepayment="' . $overtimepayment . '" data-otherpayment="' . $otherpayment . '" data-basiclabourpayment="' . $BasicLabourpayment . '" data-netpayable="' . $NetSalaryPayable . '" data-locationid="' . $locationid . '" data-haszerobasic="' . $isZeroBasic . '" data-paymentmethod="' . htmlspecialchars($paymentMethod, ENT_QUOTES) . '">
                         <td>' . $sno++ . '</td>
-                        <td class="employeename">' . $eemkey['EmployeeID'] . ' - ' . $empname . ' <sup>' . $statusBadge . '</sup></td>
+                        <td class="employeename">' . $eemkey['EmployeeID'] . ' - ' . $empname . ' <sup>' . $statusBadge . '</sup>' . $rateNotSetBadge . '</td>
                         <td>
-                           <input type="text" class="form-control payperdayinput" onkeypress="return isNumberKey(event)" value="' . $PayPerDay . '" readonly />
+                           <div class="d-flex align-items-center justify-content-center gap-1">
+                               <input type="text" class="form-control payperdayinput text-center" onkeypress="return isNumberKey(event)" value="' . $PayPerDay . '" readonly style="max-width: 90px;" />
+                               ' . $masterEditBtn . '
+                           </div>
                         </td>
                         <td class="noexport">' . str_replace(".00", "", $totalPresentDays) . ' ' . $editPresentDay . '</td>
                         <td class="presentdays" style="display:none">' . str_replace(".00", "", $totalPresentDays) . '</td>
@@ -232,7 +271,8 @@ if ($action == "CheckUploadedAttendanceWithLocation") {
             "ttllength" => $empcount,
             "totalworkeddays" => $totalworkeddays,
             "zerodaylength" => $zerodayempcount,
-            "zerodayslist" => $zerodayslist
+            "zerodayslist" => $zerodayslist,
+            "zerobasiccount" => $zerobasiccount
         );
     }
     echo json_encode($returndata);
@@ -770,7 +810,7 @@ if ($action == "CheckUploadedAttendanceWithLocation") {
                 foreach ($emplist as $eemkey) {
                     $EmployeeID = $eemkey['EmployeeID'];
                     $paytoid = $eemkey['paytoid'];
-                    $empname = $eemkey['FirstName'] . ' ' . $eemkey['MiddleName'] . ' ' . $eemkey['LastName'];
+                    $empname = trim(preg_replace('/\s+/', ' ', ($eemkey['FirstName'] ?? '') . ' ' . ($eemkey['MiddleName'] ?? '') . ' ' . ($eemkey['LastName'] ?? '')));
                     $salaryData = [
                         'EmployeeID' => $empSalkey['employeeid'],
                         'LocationId' => $locationid,
@@ -1004,7 +1044,7 @@ if ($action == "CheckUploadedAttendanceWithLocation") {
                     $EmployeeID = $eemkey['EmployeeID'];
                     $EmpEmail = $eemkey['Email'];
                     $EmpMobileNo = $eemkey['MobileNo'];
-                    $empname = $eemkey['FirstName'] . ' ' . $eemkey['MiddleName'] . ' ' . $eemkey['LastName'];
+                    $empname = trim(preg_replace('/\s+/', ' ', ($eemkey['FirstName'] ?? '') . ' ' . ($eemkey['MiddleName'] ?? '') . ' ' . ($eemkey['LastName'] ?? '')));
                     if ($eemkey['paytoid']) {
                         $emppaytoid = $eemkey['paytoid'];
                     } else {
@@ -1455,6 +1495,115 @@ if ($action == "CheckUploadedAttendanceWithLocation") {
         $rtmsg = saveLabourPayment($hrmconn, $companyid, $subcompanyid, $projectid, $EmployeeId, $PayPerDayAmount);
     }
     echo json_encode($rtmsg);
+} else if ($action == "UpdateLabourMasterWageAndMode") {
+    $loginroleid = 99;
+    if (isset($_POST['loginroleid']) && is_numeric($_POST['loginroleid'])) {
+        $loginroleid = intval($_POST['loginroleid']);
+    } else if (isset($_SESSION['loginroleid']) && is_numeric($_SESSION['loginroleid'])) {
+        $loginroleid = intval($_SESSION['loginroleid']);
+    }
+    if ($loginroleid > 3) {
+        echo json_encode(["status" => "error", "message" => "Permission denied. Only authorized users (Role <= 3) can update master wages."]);
+        exit;
+    }
+
+    $companyid = $_POST['companyid'] ?? null;
+    $subcompanyid = $_POST['subcompanyid'] ?? null;
+    $projectid = $_POST['projectid'] ?? null;
+    $EmployeeID = trim($_POST['EmployeeID'] ?? '');
+    $PerDayPayment = floatval($_POST['PerDayPayment'] ?? 0);
+    $PaymentMethod = trim($_POST['PaymentMethod'] ?? 'Cash');
+    $Comments = trim($_POST['Comments'] ?? '');
+    $loginname = trim($_POST['loginname'] ?? '');
+    $dateFrom = trim($_POST['dateFrom'] ?? '');
+    $dateTo = trim($_POST['dateTo'] ?? '');
+
+    if (empty($EmployeeID)) {
+        echo json_encode(["status" => "error", "message" => "Labour / Employee ID is required."]);
+        exit;
+    }
+    if ($PerDayPayment <= 0) {
+        echo json_encode(["status" => "error", "message" => "Please enter a valid Per Day wage greater than 0."]);
+        exit;
+    }
+    if (empty($PaymentMethod)) {
+        $PaymentMethod = 'Cash';
+    }
+
+    if (empty($companyid) || empty($subcompanyid) || empty($projectid)) {
+        $empQ = $hrmconn->prepare("SELECT companyid, subcompanyid, projectid FROM hrm_LabourMaster WHERE EmployeeID=? LIMIT 1");
+        if ($empQ) {
+            $empQ->bind_param("s", $EmployeeID);
+            $empQ->execute();
+            $eRes = $empQ->get_result();
+            if ($eRes && $eRow = $eRes->fetch_assoc()) {
+                if (empty($companyid)) $companyid = $eRow['companyid'];
+                if (empty($subcompanyid)) $subcompanyid = $eRow['subcompanyid'];
+                if (empty($projectid)) $projectid = $eRow['projectid'];
+            }
+            $empQ->close();
+        }
+    }
+
+    $auditComment = $Comments;
+    if (!empty($loginname)) {
+        $auditSuffix = "[Updated by " . $loginname . " on " . date('Y-m-d H:i') . "]";
+        $auditComment = !empty($auditComment) ? $auditComment . " " . $auditSuffix : $auditSuffix;
+    }
+
+    // Save into hrm_LabourPaymentMaster
+    $sql = "INSERT INTO hrm_LabourPaymentMaster (companyid, subcompanyid, projectid, EmployeeID, PerDayPayment, PaymentMethod, Comments, CurrencyCode)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'INR')
+            ON DUPLICATE KEY UPDATE
+                PerDayPayment = VALUES(PerDayPayment),
+                PaymentMethod = VALUES(PaymentMethod),
+                Comments = VALUES(Comments),
+                tedit = NULL";
+
+    $stmt = $hrmconn->prepare($sql);
+    $stmt->bind_param("ssssdss", $companyid, $subcompanyid, $projectid, $EmployeeID, $PerDayPayment, $PaymentMethod, $auditComment);
+
+    if ($stmt->execute()) {
+        $stmt->close();
+
+        // If an unapproved calculated record exists for this period, keep it synchronized
+        if (!empty($dateFrom) && !empty($dateTo) && !empty($projectid)) {
+            $checkSql = "SELECT SalaryID, PresentDays, incentivegrafting, incentiveseasional, overtimepayment, otherpayment, requestno, PaymentStatus 
+                         FROM hrm_LabourCalculatedSalary 
+                         WHERE ProjectID=? AND EmployeeID=? AND DateFrom=? AND (Dateto=? OR DateTo=?) LIMIT 1";
+            $chkStmt = $hrmconn->prepare($checkSql);
+            $chkStmt->bind_param("sssss", $projectid, $EmployeeID, $dateFrom, $dateTo, $dateTo);
+            $chkStmt->execute();
+            $res = $chkStmt->get_result();
+            if ($res && $cRow = $res->fetch_assoc()) {
+                if (empty($cRow['requestno']) && (empty($cRow['PaymentStatus']) || strtolower($cRow['PaymentStatus']) != 'paid')) {
+                    $prDays = floatval($cRow['PresentDays']);
+                    $newBasic = $prDays * $PerDayPayment;
+                    $newNet = $newBasic + floatval($cRow['incentivegrafting']) + floatval($cRow['incentiveseasional']) + floatval($cRow['overtimepayment']) + floatval($cRow['otherpayment']);
+                    $updSql = "UPDATE hrm_LabourCalculatedSalary 
+                               SET PayPerDay=?, basiclabourpayment=?, NetSalary=?, PaymentMethod=? 
+                               WHERE SalaryID=?";
+                    $updStmt = $hrmconn->prepare($updSql);
+                    $updStmt->bind_param("dddsi", $PerDayPayment, $newBasic, $newNet, $PaymentMethod, $cRow['SalaryID']);
+                    $updStmt->execute();
+                    $updStmt->close();
+                }
+            }
+            $chkStmt->close();
+        }
+
+        echo json_encode([
+            "status" => "success", 
+            "message" => "Master payment updated successfully for Labour: " . $EmployeeID,
+            "EmployeeID" => $EmployeeID,
+            "PerDayPayment" => $PerDayPayment,
+            "PaymentMethod" => $PaymentMethod
+        ]);
+    } else {
+        $err = $stmt->error;
+        $stmt->close();
+        echo json_encode(["status" => "error", "message" => "Database error: " . $err]);
+    }
 } else if ($action == "LabourSearchfromMasterDataforaddatt") {
     $companyid = $_POST['companyid'] ?? null;
     $subcompanyid = $_POST['subcompanyid'] ?? null;

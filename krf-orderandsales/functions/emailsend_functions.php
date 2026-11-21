@@ -603,7 +603,7 @@ function sendemailfrommailer($sendto, $sendcc, $sendbcc, $m_subject, $m_msgbody,
   $mail->Host = 'amanaccounting.in';                    // Set the SMTP server to send through
   $mail->SMTPAuth = true;                                   // Enable SMTP authentication
   $mail->Username = 'documents@amanaccounting.in';                     // SMTP username
-  $mail->Password = (require __DIR__ . '/../../mail_config.php')['password'];                               // SMTP password
+  $mail->Password = 'r^u^6AAJ=0bN';                               // SMTP password
   $mail->SMTPSecure = 'tls';         // Enable TLS encryption; `PHPMailer::ENCRYPTION_SMTPS` encouraged
   $mail->Port = 587;
 

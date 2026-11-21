@@ -1,10 +1,22 @@
 <?php
 if (isset($_GET['vw']) == 1) {
-    $key = $_GET['k'];
+    $key = $_GET['k'] ?? '';
     $rooturl = "";
     $mdid = "";
     if (isset($_GET['mdid'])) {
         $mdid = $_GET['mdid'];
+    }
+    if (!empty($key)) {
+        $key_decoded = base64url_decode($key);
+        $key_parts = explode("|", $key_decoded);
+        if (count($key_parts) >= 6) {
+            $loginid = $key_parts[0];
+            $loginroleid = $key_parts[1];
+            $companyid = $key_parts[2];
+            $subcompanyid = $key_parts[3];
+            $projectid = $key_parts[4];
+            $logintype = $key_parts[5];
+        }
     }
     $dddr = loginmodulesdetails_frommaster($authconn, $companyid, $subcompanyid, $projectid, "moduleid", $mdid);
     $groupid = "";
@@ -153,6 +165,9 @@ if (isset($_GET['vw']) == 1) {
             </div>
             <div class="col-lg-6 mt-3 mt-lg-0 text-lg-end">
                 <div class="d-inline-flex gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3 shadow-sm btnReloadWageData" id="btnReloadWageData" title="Reload / Refresh current data">
+                        <i class="ti ti-refresh me-1"></i> Reload Data
+                    </button>
                     <button class="btn btn-outline-danger btn-sm rounded-pill px-3" id="exportlbpaymentpdf" style="display:none;">
                         <i class="ti ti-file-type-pdf me-1"></i> PDF
                     </button>
@@ -175,11 +190,18 @@ if (isset($_GET['vw']) == 1) {
 
         <!-- Table Card Section -->
         <div class="card border-0 shadow-sm overflow-hidden" style="border-radius: 16px;" id="displaydataviewdiv">
-            <div class="card-header bg-white py-3 border-bottom border-light">
-                <div class="input-group search-box-premium w-50">
+            <div class="card-header bg-white py-3 border-bottom border-light d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div class="input-group search-box-premium" style="max-width: 450px;">
                     <span class="input-group-text bg-light border-0"><i class="ti ti-search text-muted"></i></span>
-                    <input type="search" class="form-control bg-light border-0 ps-0" placeholder="Filter processed records..." id="searchcallabsalaryPaytbl"
-                           oninput="filterTable('#searchcallabsalaryPaytbl', '#calculatesalry_tbl');">
+                    <input type="search" class="form-control bg-light border-0 ps-0" placeholder="Search by labour name, ID, wage..." id="searchcallabsalaryPaytbl">
+                    <button class="btn btn-light border-0 text-muted px-2" type="button" id="btnClearTableSearch" style="display:none;" title="Clear search">
+                        <i class="ti ti-x"></i>
+                    </button>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3 shadow-sm btnReloadWageData" title="Reload / Refresh current data">
+                        <i class="ti ti-refresh me-1"></i> Reload Data
+                    </button>
                 </div>
             </div>
             <div class="card-body p-0">
@@ -300,6 +322,63 @@ if (isset($_GET['vw']) == 1) {
     </div>
 </div>
 
+<!-- Update Labour Master Payment Modal -->
+<div class="modal fade" id="UpdateLabourMasterPaymentModal" role="dialog" tabindex="-1" aria-labelledby="UpdateLabourMasterPaymentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+            <div class="modal-header border-0 p-4 pb-0">
+                <div>
+                    <h4 class="fw-bold text-dark mb-1" id="UpdateLabourMasterPaymentModalLabel"><i class="ti ti-cash text-primary me-2"></i>Update Master Payment</h4>
+                    <p class="text-muted small mb-0">Update standard daily wage rate & payment method in Labour Master</p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert bg-soft-primary border-0 p-3 mb-4 rounded-3">
+                    <p class="mb-1 fw-bold text-primary small"><i class="ti ti-user me-1"></i> <span id="masterModalEmpName"></span></p>
+                    <p class="mb-0 text-muted small"><i class="ti ti-id me-1"></i> Labour ID: <b class="text-dark" id="masterModalEmpID"></b></p>
+                </div>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label small fw-bold text-muted">Per Day Wages / Rate (₹) <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-0"><i class="ti ti-currency-rupee text-muted"></i></span>
+                            <input type="number" step="0.01" min="1" id="masterModalPerDay" class="form-control bg-light border-0" placeholder="e.g. 350.00" onkeypress="return isNumberKey(event)" required />
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-bold text-muted">Payment Mode / Method <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-0"><i class="ti ti-credit-card text-muted"></i></span>
+                            <select id="masterModalPaymentMethod" class="form-select bg-light border-0" required>
+                                <option value="Cash">Cash</option>
+                                <option value="Bank Transfer">Bank Transfer</option>
+                                <option value="UPI">UPI</option>
+                                <option value="Cheque">Cheque</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-bold text-muted">Comments / Remarks (Optional)</label>
+                        <input type="text" id="masterModalComments" class="form-control bg-light border-0" placeholder="Reason or reference..." />
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check form-switch mt-1">
+                            <input class="form-check-input" type="checkbox" id="masterModalSyncCurrent" checked>
+                            <label class="form-check-label small text-muted" for="masterModalSyncCurrent">
+                                Also apply new wage to current attendance row
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-primary w-100 py-3 mt-4 rounded-pill fw-bold shadow" id="btnSubmitMasterWageUpdate">
+                    <i class="ti ti-device-floppy me-1"></i> Update in Master
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
     .bg-soft-primary { background-color: #eef2ff; }
     .bg-soft-success { background-color: #f0fdf4; }
@@ -307,6 +386,14 @@ if (isset($_GET['vw']) == 1) {
     .bg-soft-danger { background-color: #fef2f2; }
     .fs-11 { font-size: 11px; }
     .stat-icon { transition: transform 0.3s ease; }
+    @keyframes spin-anim {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    .ti-spin {
+        animation: spin-anim 0.8s linear infinite;
+        display: inline-block;
+    }
     .search-box-premium {
         border-radius: 12px;
         overflow: hidden;
@@ -342,6 +429,14 @@ if (isset($_GET['vw']) == 1) {
     var key = $("body").data("key");
     var loginname = '<?php echo isset($loginname) ? $loginname : ""; ?>';
     var mdid = "<?php echo $mdid; ?>";
+    let bodyRoleAttr = $("body").attr("data-loginroleid");
+    if (bodyRoleAttr === undefined || bodyRoleAttr === null || bodyRoleAttr === "") {
+        bodyRoleAttr = $("#hidden_loginroleid").val();
+    }
+    var loginroleid = (bodyRoleAttr !== undefined && bodyRoleAttr !== null && bodyRoleAttr !== "") 
+        ? parseInt(bodyRoleAttr) 
+        : parseInt("<?php echo (isset($loginroleid) && is_numeric($loginroleid)) ? $loginroleid : 99; ?>");
+    $("body").attr("data-loginroleid", loginroleid);
 
     // ... (All original script logic remains below, identical to original file for functionality) ...
     // Note: I will keep the original script logic intact but ensure any UI interactions like modal shows use the new IDs.
@@ -483,7 +578,10 @@ if (isset($_GET['vw']) == 1) {
         });
     });
 
-    $(document).on("change", "#wageslocationlist", function () {
+    function reloadLabourWagesData(callback) {
+        let $reloadBtns = $(".btnReloadWageData");
+        $reloadBtns.prop("disabled", true).find("i").addClass("ti-spin");
+
         let loadingMsg = $("<div id='loadingMsg' class='alert bg-soft-primary text-primary text-center p-3 mt-3'>Loading wages data...</div>");
         $("#loadingdiv").html(loadingMsg);
         var periodext = $("#attdaterangelist").val();
@@ -495,42 +593,91 @@ if (isset($_GET['vw']) == 1) {
 
         $("#calviewdatadiv").hide();
         let locationid = $("#wageslocationlist").val();
+        let selectedLocText = $("#wageslocationlist option:selected").text();
+
         $(".wagesperiod").html(changeDateFormatYmd_dMY(datefrom) + " To " + changeDateFormatYmd_dMY(dateto));
+
+        if (selectedLocText && selectedLocText !== 'Select Location') {
+            $(".wageslocationbadge").text(selectedLocText).show();
+        } else {
+            $(".wageslocationbadge").hide();
+        }
         
         EmplistforCalculateSalaryLabour_htmlcallback('slrycalyear', 'attdaterangelist', locationid, function (response) {
+            $reloadBtns.prop("disabled", false).find("i").removeClass("ti-spin");
             $("#displaydataviewdiv").show();
             $("#calviewdatadiv").show();
             
-            if (response.calstatuscount == response.apprdstatuscount && response.calstatuscount > 0) {
-                $("#savethecalculatedSalary").hide();
-            } else {
-                $("#savethecalculatedSalary").show();
-            }
+            let hasRecords = response && response.data && (parseInt(response.ttllength) > 0);
 
-            if (response.status == "Calculated" || response.status == "Approved") {
-                $("#exportlbpaymentpdf").show();
-                $("#loadingMsg").html("<h5 class='mb-0'><i class='ti ti-circle-check'></i> Wages Processed & Saved</h5>").addClass("bg-soft-success text-success").removeClass("bg-soft-primary text-primary");
-                $("#GotoApprovallabourbagesbtn").removeClass("d-none");
-            } else {
-                $("#exportlbpaymentpdf").hide();
-                $("#GotoApprovallabourbagesbtn").addClass("d-none");
-                $("#loadingMsg").html("<h5 class='mb-0'><i class='ti ti-info-circle'></i> Reviewing Raw Logs</h5>").addClass("bg-soft-warning text-warning").removeClass("bg-soft-primary text-primary");
-            }
+            if (hasRecords) {
+                if (response.calstatuscount == response.apprdstatuscount && response.calstatuscount > 0) {
+                    $("#savethecalculatedSalary").hide();
+                } else {
+                    $("#savethecalculatedSalary").show();
+                }
 
-            resetZeroBasicFilter();
-            if (response.data) {
+                if (response.status == "Calculated" || response.status == "Approved") {
+                    $("#exportlbpaymentpdf").show();
+                    $("#loadingMsg").html("<h5 class='mb-0'><i class='ti ti-circle-check'></i> Wages Processed & Saved</h5>").addClass("bg-soft-success text-success").removeClass("bg-soft-primary text-primary");
+                    $("#GotoApprovallabourbagesbtn").removeClass("d-none");
+                } else {
+                    $("#exportlbpaymentpdf").hide();
+                    $("#GotoApprovallabourbagesbtn").addClass("d-none");
+                    $("#loadingMsg").html("<h5 class='mb-0'><i class='ti ti-info-circle'></i> Reviewing Raw Logs</h5>").addClass("bg-soft-warning text-warning").removeClass("bg-soft-primary text-primary");
+                }
+
+                resetZeroBasicFilter();
                 $("#calculatesalry_tbl tbody").html(response.data);
                 $(".ttllabourwagesamountlbl").text(response.totalwagesamount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
                 $(".ttllabourcount").text(response.ttllength);
                 $(".ttlworkeddayscount").text(response.totalworkeddays);
                 $("#labourzerodayscount").text(response.zerodaylength).data("labourzerodaysdata", response.zerodayslist);
-                $("#labourzerobasiccount").text(response.zerobasiccount || 0);
-                if (parseInt(response.zerobasiccount || 0) > 0) {
+
+                let zeroBasicCount = 0;
+                $("#calculatesalry_tbl tbody tr").each(function () {
+                    let hasZero = $(this).attr("data-haszerobasic");
+                    let bAmt = parseFloat($(this).attr("data-basiclabourpayment")) || 0;
+                    let payRate = parseFloat($(this).find(".payperdayinput").val()) || 0;
+                    if (hasZero == "1" || hasZero == 1 || bAmt < 1 || payRate <= 0) {
+                        $(this).attr("data-haszerobasic", "1");
+                        $(this).data("haszerobasic", 1);
+                        zeroBasicCount++;
+                        if ($(this).find(".employeename span.badge.bg-danger:contains('Rate Not Set')").length === 0) {
+                            let empId = $(this).data("employeeid") || "";
+                            let empName = $(this).data("employeename") || "";
+                            let pMethod = $(this).data("paymentmethod") || "Cash";
+                            let badgeHtml = (loginroleid <= 3)
+                                ? ` <span class="badge bg-danger ms-1 btnUpdateMasterWage" style="cursor:pointer;" title="Click to edit/update Master Wage & Payment Mode" data-employeeid="${empId}" data-employeename="${empName}" data-payperday="${payRate}" data-paymentmethod="${pMethod}"><i class="ti ti-edit me-1"></i>Rate Not Set</span>`
+                                : ` <span class="badge bg-danger ms-1">Rate Not Set</span>`;
+                            $(this).find(".employeename").append(badgeHtml);
+                        }
+                    } else {
+                        $(this).attr("data-haszerobasic", "0");
+                        $(this).data("haszerobasic", 0);
+                    }
+                });
+
+                let displayZeroCount = (typeof response.zerobasiccount !== 'undefined') ? parseInt(response.zerobasiccount) : zeroBasicCount;
+                if (zeroBasicCount > displayZeroCount) {
+                    displayZeroCount = zeroBasicCount;
+                }
+                $("#labourzerobasiccount").text(displayZeroCount);
+                if (displayZeroCount > 0) {
                     $("#card_zerobasicfilter").addClass("border border-danger");
                 } else {
                     $("#card_zerobasicfilter").removeClass("border border-danger");
                 }
+
+                // Apply any active search filter
+                applyLabourTableFilter();
             } else {
+                $("#savethecalculatedSalary").hide();
+                $("#exportlbpaymentpdf").hide();
+                $("#GotoApprovallabourbagesbtn").addClass("d-none");
+                $("#loadingMsg").html("<h5 class='mb-0'><i class='ti ti-info-circle'></i> Reviewing Raw Logs</h5>").addClass("bg-soft-warning text-warning").removeClass("bg-soft-primary text-primary");
+
+                resetZeroBasicFilter();
                 $("#calculatesalry_tbl tbody").html("<tr><td colspan='12' class='text-center py-5 text-muted'>No attendance logs found for this period.</td></tr>");
                 $(".ttllabourwagesamountlbl").text('0.00');
                 $(".ttllabourcount").text('0');
@@ -539,7 +686,20 @@ if (isset($_GET['vw']) == 1) {
                 $("#labourzerobasiccount").text('0');
                 $("#card_zerobasicfilter").removeClass("border border-danger");
             }
+
+            if (typeof callback === "function") {
+                callback(response);
+            }
         });
+    }
+
+    $(document).on("change", "#wageslocationlist", function () {
+        reloadLabourWagesData();
+    });
+
+    $(document).on("click", ".btnReloadWageData", function (e) {
+        e.preventDefault();
+        reloadLabourWagesData();
     });
 
     let isZeroBasicFiltered = false;
@@ -549,6 +709,7 @@ if (isset($_GET['vw']) == 1) {
         $("#calculatesalry_tbl tbody tr").show();
         $("#card_zerobasicfilter").removeClass("border-2 bg-soft-danger shadow-sm");
         $("#activeZeroBasicFilterBadge").remove();
+        applyLabourTableFilter();
     }
 
     $(document).on("click", "#card_zerobasicfilter", function () {
@@ -564,24 +725,24 @@ if (isset($_GET['vw']) == 1) {
 
         isZeroBasicFiltered = !isZeroBasicFiltered;
         if (isZeroBasicFiltered) {
+            $("#card_zerobasicfilter").addClass("border-2 bg-soft-danger shadow-sm");
+            $("#activeZeroBasicFilterBadge").remove();
+            let visibleCount = 0;
             $("#calculatesalry_tbl tbody tr").each(function () {
                 let hasZeroBasic = $(this).attr("data-haszerobasic");
                 if (hasZeroBasic == 1 || hasZeroBasic == "1") {
-                    $(this).show();
-                } else {
-                    $(this).hide();
+                    visibleCount++;
                 }
             });
-            $("#card_zerobasicfilter").addClass("border-2 bg-soft-danger shadow-sm");
-            $("#activeZeroBasicFilterBadge").remove();
             $("#displaydataviewdiv .card-header").after(`
                 <div id="activeZeroBasicFilterBadge" class="bg-soft-danger text-danger px-4 py-2 d-flex justify-content-between align-items-center border-bottom border-danger">
-                    <span class="fw-bold small"><i class="ti ti-filter me-1"></i> Filtered View: Showing <b>${count}</b> Labour(s) with Payment Not Set (Basic Amt &lt; ₹1)</span>
+                    <span class="fw-bold small"><i class="ti ti-filter me-1"></i> Filtered View: Showing <b>${visibleCount}</b> Labour(s) with Payment Not Set (Basic Amt &lt; ₹1)</span>
                     <button class="btn btn-sm btn-danger rounded-pill px-3 py-1 fw-bold shadow-sm" id="clearZeroBasicFilterBtn">
                         <i class="ti ti-x me-1"></i> Show All Labours
                     </button>
                 </div>
             `);
+            applyLabourTableFilter();
         } else {
             resetZeroBasicFilter();
         }
@@ -590,6 +751,68 @@ if (isset($_GET['vw']) == 1) {
     $(document).on("click", "#clearZeroBasicFilterBtn", function (e) {
         e.stopPropagation();
         resetZeroBasicFilter();
+    });
+
+    function applyLabourTableFilter() {
+        let rawVal = $("#searchcallabsalaryPaytbl").val() || "";
+        let query = rawVal.toLowerCase().trim().replace(/\s+/g, ' ');
+        let queryWords = query ? query.split(' ') : [];
+
+        if (rawVal.trim().length > 0) {
+            $("#btnClearTableSearch").show();
+        } else {
+            $("#btnClearTableSearch").hide();
+        }
+
+        $("#calculatesalry_tbl tbody tr").each(function () {
+            let $tr = $(this);
+
+            // Respect zero basic filter if active
+            if (isZeroBasicFiltered) {
+                let hasZero = $tr.attr("data-haszerobasic");
+                if (hasZero != "1" && hasZero != 1) {
+                    $tr.hide();
+                    return;
+                }
+            }
+
+            if (queryWords.length === 0) {
+                $tr.show();
+                return;
+            }
+
+            let empId = ($tr.data("employeeid") || $tr.attr("data-employeeid") || "").toString().toLowerCase();
+            let empName = ($tr.data("employeename") || $tr.attr("data-employeename") || "").toString().toLowerCase().replace(/\s+/g, ' ');
+            let pMethod = ($tr.data("paymentmethod") || $tr.attr("data-paymentmethod") || "").toString().toLowerCase();
+            
+            let tdText = $tr.find("td").map(function () {
+                return $(this).text();
+            }).get().join(" ").toLowerCase().replace(/\s+/g, ' ');
+
+            let inputVals = $tr.find("input, select").map(function () {
+                return $(this).val();
+            }).get().join(" ").toLowerCase().replace(/\s+/g, ' ');
+
+            let searchableContent = (empId + " " + empName + " " + pMethod + " " + tdText + " " + inputVals).replace(/\s+/g, ' ');
+
+            let matches = queryWords.every(function (word) {
+                return searchableContent.indexOf(word) > -1;
+            });
+
+            if (matches) {
+                $tr.show();
+            } else {
+                $tr.hide();
+            }
+        });
+    }
+
+    $(document).on("input keyup search change", "#searchcallabsalaryPaytbl", function () {
+        applyLabourTableFilter();
+    });
+
+    $(document).on("click", "#btnClearTableSearch", function () {
+        $("#searchcallabsalaryPaytbl").val("").trigger("input");
     });
 
     $(document).on("input", ".payperdayinput", function () {
@@ -608,12 +831,22 @@ if (isset($_GET['vw']) == 1) {
         $tr.attr("data-basiclabourpayment", basicAmt);
         $tr.attr("data-netpayable", netPayable);
         
-        let hasZero = (basicAmt < 1) ? 1 : 0;
+        let hasZero = (basicAmt < 1 || payPerDay <= 0) ? 1 : 0;
         $tr.attr("data-haszerobasic", hasZero);
         $tr.data("haszerobasic", hasZero);
 
         if (hasZero === 0) {
             $tr.find(".employeename span.badge.bg-danger:contains('Rate Not Set')").remove();
+        } else {
+            if ($tr.find(".employeename span.badge.bg-danger:contains('Rate Not Set')").length === 0) {
+                let empId = $tr.data("employeeid") || "";
+                let empName = $tr.data("employeename") || "";
+                let pMethod = $tr.data("paymentmethod") || "Cash";
+                let badgeHtml = (loginroleid <= 3) 
+                    ? ` <span class="badge bg-danger ms-1 btnUpdateMasterWage" style="cursor:pointer;" title="Click to edit/update Master Wage & Payment Mode" data-employeeid="${empId}" data-employeename="${empName}" data-payperday="${payPerDay}" data-paymentmethod="${pMethod}"><i class="ti ti-edit me-1"></i>Rate Not Set</span>`
+                    : ` <span class="badge bg-danger ms-1">Rate Not Set</span>`;
+                $tr.find(".employeename").append(badgeHtml);
+            }
         }
 
         // Recalculate totals
@@ -622,19 +855,158 @@ if (isset($_GET['vw']) == 1) {
         $("#calculatesalry_tbl tbody tr").each(function () {
             let bAmt = parseFloat($(this).attr("data-basiclabourpayment")) || 0;
             let nPay = parseFloat($(this).attr("data-netpayable")) || 0;
+            let pRate = parseFloat($(this).find(".payperdayinput").val()) || 0;
             totalWages += nPay;
-            if (bAmt < 1) {
+            if (bAmt < 1 || pRate <= 0) {
                 zeroBasicCount++;
             }
         });
         $(".ttllabourwagesamountlbl").text(totalWages.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
         $("#labourzerobasiccount").text(zeroBasicCount);
+        if (zeroBasicCount > 0) {
+            $("#card_zerobasicfilter").addClass("border border-danger");
+        } else {
+            $("#card_zerobasicfilter").removeClass("border border-danger");
+        }
+    });
+
+    $(document).on("click", ".btnUpdateMasterWage", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (loginroleid > 3) {
+            Swal.fire("Permission Denied", "Only authorized users (Role <= 3) can edit/update master wages.", "error");
+            return;
+        }
+
+        let $tr = $(this).closest("tr");
+        let employeeId = $(this).data("employeeid") || $tr.data("employeeid");
+        let employeeName = $(this).data("employeename") || $tr.data("employeename");
+        let payPerDay = $(this).data("payperday");
+        if (typeof payPerDay === "undefined" || payPerDay === "" || isNaN(parseFloat(payPerDay))) {
+            payPerDay = $tr.find("input.payperdayinput").val() || "";
+        }
+        let paymentMethod = $(this).data("paymentmethod") || $tr.data("paymentmethod") || "Cash";
+
+        $("#masterModalEmpID").text(employeeId);
+        $("#masterModalEmpName").text(employeeName);
+        $("#masterModalPerDay").val(parseFloat(payPerDay) > 0 ? payPerDay : "");
+        $("#masterModalPaymentMethod").val(paymentMethod || "Cash");
+        $("#masterModalComments").val("");
+        $("#masterModalSyncCurrent").prop("checked", true);
+
+        $("#btnSubmitMasterWageUpdate").data({
+            employeeid: employeeId,
+            employeename: employeeName
+        });
+
+        $("#UpdateLabourMasterPaymentModal").modal("show");
+    });
+
+    $(document).on("click", "#btnSubmitMasterWageUpdate", function () {
+        if (loginroleid > 3) {
+            Swal.fire("Permission Denied", "Only authorized users (Role <= 3) can edit/update master wages.", "error");
+            return;
+        }
+
+        let employeeId = $(this).data("employeeid");
+        let employeeName = $(this).data("employeename");
+        let perDayPayment = parseFloat($("#masterModalPerDay").val()) || 0;
+        let paymentMethod = $("#masterModalPaymentMethod").val() || "Cash";
+        let comments = $("#masterModalComments").val() || "";
+        let syncCurrent = $("#masterModalSyncCurrent").is(":checked");
+
+        if (perDayPayment <= 0) {
+            Swal.fire("Invalid Input", "Please enter a valid Per Day wage greater than ₹0.", "warning");
+            return;
+        }
+
+        let periodext = $("#attdaterangelist").val() || "";
+        let dateFrom = "", dateTo = "";
+        if (periodext) {
+            let p = periodext.split("|");
+            dateFrom = p[0];
+            dateTo = p[1];
+        }
+
+        let $btn = $(this);
+        let origText = $btn.html();
+        $btn.prop("disabled", true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
+
+        let formData = new FormData();
+        formData.append("companyid", companyid);
+        formData.append("subcompanyid", subcompanyid);
+        formData.append("projectid", projectid);
+        formData.append("loginroleid", loginroleid);
+        formData.append("loginname", loginname);
+        formData.append("EmployeeID", employeeId);
+        formData.append("PerDayPayment", perDayPayment);
+        formData.append("PaymentMethod", paymentMethod);
+        formData.append("Comments", comments);
+        formData.append("dateFrom", dateFrom);
+        formData.append("dateTo", dateTo);
+
+        $.ajax({
+            type: "POST",
+            url: routurl + "modal/hrm_laboursalarymodal.php?action=UpdateLabourMasterWageAndMode",
+            data: formData,
+            contentType: false,
+            processData: false,
+            dataType: "JSON",
+            success: function (res) {
+                $btn.prop("disabled", false).html(origText);
+                if (res.status === "success") {
+                    $("#UpdateLabourMasterPaymentModal").modal("hide");
+                    Swal.fire({
+                        icon: "success",
+                        title: "Master Updated",
+                        text: `Labour ${employeeId}: Wages/Day updated to ₹${perDayPayment.toFixed(2)} (${paymentMethod}) in Master.`,
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+
+                    if (syncCurrent) {
+                        let $row = $(`#calculatesalry_tbl tbody tr[data-employeeid="${employeeId}"]`);
+                        if ($row.length > 0) {
+                            $row.attr("data-paymentmethod", paymentMethod);
+                            $row.data("paymentmethod", paymentMethod);
+                            $row.find(".btnUpdateMasterWage").data("payperday", perDayPayment);
+                            $row.find(".btnUpdateMasterWage").data("paymentmethod", paymentMethod);
+                            
+                            let $input = $row.find("input.payperdayinput");
+                            $input.val(perDayPayment).trigger("input");
+
+                            // If currently in filtered view for Payment Not Set, update filtered view count
+                            if (isZeroBasicFiltered) {
+                                $row.hide();
+                                let remainingCount = 0;
+                                $("#calculatesalry_tbl tbody tr").each(function () {
+                                    if ($(this).attr("data-haszerobasic") == "1") {
+                                        remainingCount++;
+                                    }
+                                });
+                                $("#labourzerobasiccount").text(remainingCount);
+                                $("#activeZeroBasicFilterBadge b").text(remainingCount);
+                                if (remainingCount === 0) {
+                                    resetZeroBasicFilter();
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Swal.fire("Error", res.message || "Failed to update master payment.", "error");
+                }
+            },
+            error: function (xhr) {
+                $btn.prop("disabled", false).html(origText);
+                Swal.fire("Error", "Request failed: " + xhr.statusText, "error");
+            }
+        });
     });
 
     $(document).on("change", "#iseditwages", function () {
         if ($(this).is(":checked")) {
             $(".editPresentDays").removeClass("d-none");
-            $(".payperdayinput").prop("disabled", false);
+            $(".payperdayinput").prop("disabled", false).prop("readonly", false);
             $("#exportlbpaymentpdf").hide();
             $("#savethecalculatedSalary").show();
             $("#saveupdatebtntxt").text("Update Wages");
@@ -643,7 +1015,7 @@ if (isset($_GET['vw']) == 1) {
             $("#exportlbpaymentpdf").show();
             $("#savethecalculatedSalary").hide();
             $(".editPresentDays").addClass("d-none");
-            $(".payperdayinput").prop("disabled", true);
+            $(".payperdayinput").prop("disabled", true).prop("readonly", true);
         }
     });
 

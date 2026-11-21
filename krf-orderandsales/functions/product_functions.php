@@ -4719,6 +4719,8 @@ function getPendingAllocationBoxesGroupedByDateDesc($conn, $projectid, $dateFrom
         // Fetch all allocated boxes for these stock orders
         $stockOrderList = array_values(array_filter(array_unique($stockOrderList)));
         $allocatedByOrder = [];
+        $statusCountsByOrder = [];
+        $totalBoxesByOrder = [];
 
         if (!empty($stockOrderList)) {
             $placeholders = implode(',', array_fill(0, count($stockOrderList), '?'));
@@ -4760,6 +4762,49 @@ function getPendingAllocationBoxesGroupedByDateDesc($conn, $projectid, $dateFrom
                 }
                 $allocStmt->close();
             }
+
+            // Fetch accurate counts as per status directly from krf_polyhouse_germinated_boxes
+            $statusSql = "SELECT gb.stockorderno, gb.roottype, gb.status, COUNT(*) as cnt, COALESCE(SUM(gb.traycountinbox), 0) as trays
+                          FROM krf_polyhouse_germinated_boxes gb
+                          WHERE gb.projectid = ?
+                            AND gb.stockorderno IN ($placeholders)
+                            AND (gb.tedit IS NULL OR gb.tedit = '')
+                          GROUP BY gb.stockorderno, gb.roottype, gb.status";
+            $statusStmt = $conn->prepare($statusSql);
+            if ($statusStmt) {
+                $statusParams = array_merge([$projectid], $stockOrderList);
+                $statusStmt->bind_param($soTypes, ...$statusParams);
+                $statusStmt->execute();
+                $statusRes = $statusStmt->get_result();
+                while ($stRow = $statusRes->fetch_assoc()) {
+                    $so = $stRow['stockorderno'];
+                    $rt = $stRow['roottype'] ?? '';
+                    $st = $stRow['status'];
+                    $k = $so . '_' . $rt;
+                    if (!isset($statusCountsByOrder[$k])) {
+                        $statusCountsByOrder[$k] = [];
+                        $totalBoxesByOrder[$k] = 0;
+                    }
+                    $statusCountsByOrder[$k][$st] = [
+                        'count' => (int)$stRow['cnt'],
+                        'trays' => (int)$stRow['trays']
+                    ];
+                    $totalBoxesByOrder[$k] += (int)$stRow['cnt'];
+
+                    // Also for whole order
+                    if (!isset($statusCountsByOrder[$so])) {
+                        $statusCountsByOrder[$so] = [];
+                        $totalBoxesByOrder[$so] = 0;
+                    }
+                    if (!isset($statusCountsByOrder[$so][$st])) {
+                        $statusCountsByOrder[$so][$st] = ['count' => 0, 'trays' => 0];
+                    }
+                    $statusCountsByOrder[$so][$st]['count'] += (int)$stRow['cnt'];
+                    $statusCountsByOrder[$so][$st]['trays'] += (int)$stRow['trays'];
+                    $totalBoxesByOrder[$so] += (int)$stRow['cnt'];
+                }
+                $statusStmt->close();
+            }
         }
 
         // Map user names
@@ -4789,23 +4834,26 @@ function getPendingAllocationBoxesGroupedByDateDesc($conn, $projectid, $dateFrom
             $groupKey = $opDate . '_' . $row['stockorderno'] . '_' . ($row['roottype'] ?? '') . '_' . ($row['sowinglotno_internal'] ?? '');
             $orderKey = $row['stockorderno'] . '_' . ($row['roottype'] ?? '');
 
-            $rcvName = $userMap[$row['created_by']] ?? $row['created_by'];
-            $alcName = $userMap[$row['received_by']] ?? $row['received_by'];
+            $rcvName = $userMap[$row['received_by']] ?? ($userMap[$row['created_by']] ?? $row['created_by']);
 
             if (!isset($groupedData[$groupKey])) {
                 $rawAllocated = $allocatedByOrder[$orderKey] ?? [];
                 $formattedAllocated = [];
                 $allocPolyhouses = [];
                 $allocDates = [];
+                $allocatorNames = [];
 
                 foreach ($rawAllocated as $abx) {
-                    $abxAllocByName = $userMap[$abx['received_by']] ?? $abx['received_by'];
+                    $abxAllocByName = $userMap[$abx['received_by']] ?? ($userMap[$abx['created_by']] ?? $abx['received_by']);
                     $phName = !empty($abx['polyhousename']) ? $abx['polyhousename'] : 'PH #' . ($abx['polyhouseid'] ?? '0');
                     if (!in_array($phName, $allocPolyhouses)) {
                         $allocPolyhouses[] = $phName;
                     }
                     if (!empty($abx['boxopeningdate']) && !in_array($abx['boxopeningdate'], $allocDates)) {
                         $allocDates[] = $abx['boxopeningdate'];
+                    }
+                    if (!empty($abxAllocByName) && $abxAllocByName !== 'N/A' && !in_array($abxAllocByName, $allocatorNames)) {
+                        $allocatorNames[] = $abxAllocByName;
                     }
                     $formattedAllocated[] = [
                         "boxid" => $abx['boxid'],
@@ -4848,7 +4896,7 @@ function getPendingAllocationBoxesGroupedByDateDesc($conn, $projectid, $dateFrom
                     "allocated_dates" => implode(", ", array_map(function($d){ return date("d-M-Y", strtotime($d)); }, $allocDates)),
                     "has_multiple_dates" => (count($allocDates) > 1 || (count($allocDates) === 1 && $allocDates[0] !== $opDate)),
                     "received_by" => [],
-                    "allocated_by" => [],
+                    "allocated_by" => $allocatorNames,
                     "boxes" => [],
                     "allocated_boxes" => $formattedAllocated
                 ];
@@ -4867,15 +4915,20 @@ function getPendingAllocationBoxesGroupedByDateDesc($conn, $projectid, $dateFrom
             if (!empty($rcvName) && !in_array($rcvName, $groupedData[$groupKey]['received_by'])) {
                 $groupedData[$groupKey]['received_by'][] = $rcvName;
             }
-            if (!empty($alcName) && !in_array($alcName, $groupedData[$groupKey]['allocated_by'])) {
-                $groupedData[$groupKey]['allocated_by'][] = $alcName;
-            }
         }
 
         foreach ($groupedData as &$data) {
-            $data['total_boxes_count'] = $data['pending_boxes_count'] + $data['allocated_boxes_count'];
+            $oKey = $data['stockorderno'] . '_' . ($data['roottype'] ?? '');
+            $soKey = $data['stockorderno'];
+
+            // Total boxes count as per status from table krf_polyhouse_germinated_boxes
+            $data['total_boxes_count'] = isset($totalBoxesByOrder[$oKey]) ? $totalBoxesByOrder[$oKey] : ($data['pending_boxes_count'] + $data['allocated_boxes_count']);
             $data['noofboxes'] = $data['total_boxes_count'];
             $data['allocatedboxes'] = $data['allocated_boxes_count'];
+            $data['order_total_boxes'] = $totalBoxesByOrder[$soKey] ?? $data['total_boxes_count'];
+            $data['status_counts'] = $statusCountsByOrder[$oKey] ?? [];
+            $data['order_status_counts'] = $statusCountsByOrder[$soKey] ?? [];
+
             $data['received_by'] = implode(", ", $data['received_by']);
             $data['allocated_by'] = implode(", ", $data['allocated_by']);
         }
@@ -4884,6 +4937,173 @@ function getPendingAllocationBoxesGroupedByDateDesc($conn, $projectid, $dateFrom
     } catch (Throwable $e) {
         error_log("Error in getPendingAllocationBoxesGroupedByDateDesc: " . $e->getMessage());
         return [];
+    }
+}
+
+/**
+ * Fetch detailed germination box records and status counts for a specific production order
+ */
+function getOrderGerminatedBoxesDetails($conn, $authconn, $projectid, $stockorderno, $roottype = '')
+{
+    try {
+        if (empty($stockorderno)) {
+            return ["status" => "error", "message" => "Stock Order Number is required."];
+        }
+
+        $params = [$stockorderno, $projectid, $projectid, $projectid];
+        $types = "siii";
+        $roottypeSql = "";
+
+        if (!empty($roottype) && $roottype !== 'N/A' && $roottype !== 'all') {
+            $roottypeSql = " AND gb.roottype = ? ";
+            $params[] = $roottype;
+            $types .= "s";
+        }
+
+        $sql = "SELECT gb.boxid, gb.boxbatchno, gb.boxbatchdate, gb.projectid, gb.stockorderno, 
+                       gb.sowinglotno_internal, gb.roottype, gb.productid, gb.productname, 
+                       gb.qrcode, gb.traycountinbox, gb.allocated_traycount, gb.boxpackingdate, 
+                       gb.boxopeningdate, gb.sowinglocationid, gb.polyhouseid, gb.status, 
+                       gb.created_by, gb.created_at, gb.received_by, gb.received_at,
+                       ph.polyhousename, ph.physicallocation
+                FROM krf_polyhouse_germinated_boxes gb
+                LEFT JOIN krf_polyhouse_master ph ON gb.polyhouseid = ph.polyhouseid
+                WHERE gb.stockorderno = ? 
+                  AND (gb.projectid = ? OR ? = 0 OR ? = 17)
+                  AND (gb.tedit IS NULL OR gb.tedit = '')
+                  $roottypeSql
+                ORDER BY gb.boxid ASC";
+
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            return ["status" => "error", "message" => "Database query prepare failed: " . $conn->error];
+        }
+        $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $res = $stmt->get_result();
+
+        $boxes = [];
+        $userIds = [];
+        $statusCounts = [];
+        $totalTrays = 0;
+        $pendingCount = 0;
+        $pendingTrays = 0;
+        $allocCount = 0;
+        $allocTrays = 0;
+        $receivedPhCount = 0;
+        $receivedPhTrays = 0;
+        $rootTypes = [];
+        $productName = '';
+
+        while ($row = $res->fetch_assoc()) {
+            if (empty($productName) && !empty($row['productname'])) {
+                $productName = $row['productname'];
+            }
+            $st = $row['status'] ?: 'Unknown';
+            $tc = (int)($row['traycountinbox'] ?? 0);
+            $rt = $row['roottype'] ?? '';
+
+            if (!isset($statusCounts[$st])) {
+                $statusCounts[$st] = ['count' => 0, 'trays' => 0];
+            }
+            $statusCounts[$st]['count']++;
+            $statusCounts[$st]['trays'] += $tc;
+            $totalTrays += $tc;
+
+            if (in_array($st, ['PendingAllocation', 'ReceivedAfterSowing'])) {
+                $pendingCount++;
+                $pendingTrays += $tc;
+            } else if ($st === 'Allocated') {
+                $allocCount++;
+                $allocTrays += $tc;
+            } else if ($st === 'ReceivedAtPolyhouse') {
+                $receivedPhCount++;
+                $receivedPhTrays += $tc;
+            }
+
+            if (!empty($rt) && !in_array($rt, $rootTypes)) {
+                $rootTypes[] = $rt;
+            }
+
+            if (!empty($row['created_by']) && is_numeric($row['created_by'])) {
+                $userIds[] = (int)$row['created_by'];
+            }
+            if (!empty($row['received_by']) && is_numeric($row['received_by'])) {
+                $userIds[] = (int)$row['received_by'];
+            }
+
+            $boxes[] = $row;
+        }
+        $stmt->close();
+
+        // Fetch user names
+        $userMap = [];
+        $userIds = array_values(array_filter(array_unique($userIds)));
+        if (!empty($userIds) && isset($authconn) && $authconn instanceof mysqli) {
+            $uPlaceholders = implode(',', array_fill(0, count($userIds), '?'));
+            $uTypes = str_repeat('i', count($userIds));
+            $uSql = "SELECT loginid, loginname, mobileno FROM login_user_master WHERE loginid IN ($uPlaceholders)";
+            $uStmt = $authconn->prepare($uSql);
+            if ($uStmt) {
+                $uStmt->bind_param($uTypes, ...$userIds);
+                $uStmt->execute();
+                $uRes = $uStmt->get_result();
+                while ($uRow = $uRes->fetch_assoc()) {
+                    $userMap[$uRow['loginid']] = $uRow['loginname'];
+                    $userMap[$uRow['mobileno']] = $uRow['loginname'];
+                }
+                $uStmt->close();
+            }
+        }
+
+        // Format box records
+        $formattedBoxes = [];
+        foreach ($boxes as $b) {
+            $cByName = $userMap[$b['created_by']] ?? $b['created_by'];
+            $rByName = $userMap[$b['received_by']] ?? $b['received_by'];
+            $formattedBoxes[] = [
+                'boxid' => (int)$b['boxid'],
+                'qrcode' => $b['qrcode'] ?: ('BOX-' . $b['boxid']),
+                'roottype' => $b['roottype'] ?? '',
+                'productname' => $b['productname'] ?? '',
+                'sowinglotno_internal' => $b['sowinglotno_internal'] ?? '',
+                'traycountinbox' => (int)$b['traycountinbox'],
+                'boxpackingdate' => $b['boxpackingdate'],
+                'boxpackingdate_dsp' => !empty($b['boxpackingdate']) ? date("d-M-Y", strtotime($b['boxpackingdate'])) : '-',
+                'boxopeningdate' => $b['boxopeningdate'],
+                'boxopeningdate_dsp' => !empty($b['boxopeningdate']) ? date("d-M-Y", strtotime($b['boxopeningdate'])) : '-',
+                'polyhouseid' => (int)$b['polyhouseid'],
+                'polyhousename' => !empty($b['polyhousename']) ? $b['polyhousename'] : ($b['polyhouseid'] > 0 ? 'PH #' . $b['polyhouseid'] : '-'),
+                'physicallocation' => $b['physicallocation'] ?? '',
+                'status' => $b['status'] ?: 'Unknown',
+                'created_by' => $cByName ?: '-',
+                'created_at' => !empty($b['created_at']) ? date("d-M-Y h:i A", strtotime($b['created_at'])) : '-',
+                'received_by' => $rByName ?: '-',
+                'received_at' => !empty($b['received_at']) ? date("d-M-Y h:i A", strtotime($b['received_at'])) : '-'
+            ];
+        }
+
+        return [
+            'status' => 'success',
+            'stockorderno' => $stockorderno,
+            'productname' => $productName,
+            'summary' => [
+                'total_boxes' => count($boxes),
+                'total_trays' => $totalTrays,
+                'pending_boxes' => $pendingCount,
+                'pending_trays' => $pendingTrays,
+                'allocated_boxes' => $allocCount,
+                'allocated_trays' => $allocTrays,
+                'received_ph_boxes' => $receivedPhCount,
+                'received_ph_trays' => $receivedPhTrays,
+                'status_counts' => $statusCounts,
+                'roottypes' => $rootTypes
+            ],
+            'boxes' => $formattedBoxes
+        ];
+    } catch (Throwable $e) {
+        error_log("Error in getOrderGerminatedBoxesDetails: " . $e->getMessage());
+        return ["status" => "error", "message" => $e->getMessage()];
     }
 }
 

@@ -388,12 +388,20 @@ function EmplistforCalculateSalaryLabour_htmlcallback(attyearmonth_eid, daterang
     var companyid = $("body").data("companyid");
     var subcompanyid = $("body").data("subcompanyid");
     var projectid = $("body").data("projectid");
+    var loginroleid = $("body").attr("data-loginroleid");
+    if (loginroleid === undefined || loginroleid === null || loginroleid === "") {
+        loginroleid = $("#hidden_loginroleid").val();
+    }
+    if (loginroleid === undefined || loginroleid === null || loginroleid === "") {
+        loginroleid = (typeof window.loginroleid !== "undefined") ? window.loginroleid : "";
+    }
     var attyearmonth = $("#" + attyearmonth_eid + "").val();
     var daterange = $("#" + daterange_eid + "").val();
 
     form_data.append("companyid", companyid);
     form_data.append("subcompanyid", subcompanyid);
     form_data.append("projectid", projectid);
+    form_data.append("loginroleid", loginroleid);
     form_data.append("attyearmonth", attyearmonth);
     form_data.append("daterange", daterange);
     form_data.append("locationid", locationid);

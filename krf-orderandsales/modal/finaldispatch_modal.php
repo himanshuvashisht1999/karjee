@@ -143,17 +143,7 @@ if (!function_exists('safeCleanupReadyStockConstraints')) {
         } catch (Throwable $e) {}
 
         try {
-            $chkCol1 = $krfconn->query("SHOW COLUMNS FROM krf_readystock_allocation LIKE 'invoice_number'");
-            if ($chkCol1 && $chkCol1->num_rows == 0) {
-                $krfconn->query("ALTER TABLE krf_readystock_allocation ADD COLUMN invoice_number VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL AFTER dispatchqty");
-            }
-        } catch (Throwable $e) {}
-
-        try {
-            $chkCol2 = $krfconn->query("SHOW COLUMNS FROM krf_readystock_allocation LIKE 'invoice_date'");
-            if ($chkCol2 && $chkCol2->num_rows == 0) {
-                $krfconn->query("ALTER TABLE krf_readystock_allocation ADD COLUMN invoice_date DATE NULL DEFAULT NULL AFTER invoice_number");
-            }
+            $krfconn->query("ALTER TABLE krf_readystock_allocation MODIFY COLUMN status VARCHAR(50) DEFAULT 'allocated'");
         } catch (Throwable $e) {}
     }
 }
@@ -311,14 +301,14 @@ if (!function_exists('syncInvoiceItemsOnReallocation')) {
             $prodCond = " AND productname = '{$escPnm}'";
         }
 
-        // Only update non-dispatched invoice items for this psono (never touch dispatched items)
+        // Only update non-dispatched invoice items for this psono
         $sql = "
             UPDATE sales_invoice_items
             SET 
                 stockorder_no = '{$escBatch}',
                 updated_at = NOW()
             WHERE psono = '{$escPso}'
-              AND LOWER(TRIM(status)) = 'readytoload'
+              AND LOWER(TRIM(status)) IN ('readytoload', 'readytodispatch', 'active')
               {$prodCond}
         ";
         @$krfconn->query($sql);
@@ -939,6 +929,8 @@ if ($action == "GetActiveFinalDispatchDates") {
               AND soi.deliverydate < ?
               AND soi.deliverydate IS NOT NULL
               AND soi.deliverydate != '0000-00-00'
+              AND (soi.tedit IS NULL OR soi.tedit = '' OR soi.tedit = '0')
+              AND (so.tedit IS NULL OR so.tedit = '' OR so.tedit = '0')
               AND LOWER(IFNULL(so.status, '')) NOT IN ('delivered', 'completed', 'dispatched', 'fulldispatch', 'cancelled')
               AND LOWER(IFNULL(soi.status, '')) NOT IN ('allocated', 'partial allocated', 'partialallocated', 'delivered', 'completed', 'dispatched', 'cancelled')
               AND IFNULL(soi.allocate_ordqty, 0) <= 0
@@ -973,6 +965,11 @@ if ($action == "GetActiveFinalDispatchDates") {
             rsa.productname AS rsa_productname,
             rsa.productid AS rsa_productid,
             rsa.allocatedbed AS rsa_allocatedbed,
+            rsa.allocate_ordqty AS rsa_allocate_ordqty,
+            rsa.dispatchqty AS rsa_dispatchqty,
+            rsa.status AS rsa_status,
+            rsa.invoice_number AS rsa_invoice_number,
+            rsa.invoice_date AS rsa_invoice_date,
             COALESCE(NULLIF(TRIM(alloc_pso.product_name), ''), NULLIF(TRIM(pso.product_name), ''), NULLIF(TRIM(alloc_rts.productname), ''), NULLIF(TRIM(rsa.productname), ''), soi.product_name) AS allocated_product_name,
             COALESCE(NULLIF(TRIM(alloc_pso.productid), ''), NULLIF(TRIM(pso.productid), ''), NULLIF(TRIM(alloc_rts.productid), ''), NULLIF(TRIM(rsa.productid), ''), soi.product_id) AS allocated_product_id,
             soi.quantity AS order_qty,
@@ -1104,15 +1101,18 @@ if ($action == "GetActiveFinalDispatchDates") {
         LEFT JOIN krf_readystock_allocation rsa ON rsa.id = (
             SELECT rsa2.id FROM krf_readystock_allocation rsa2 
             WHERE (
-                rsa2.allocate_stockorder_no = COALESCE(NULLIF(poc.allocated_stockorderno, ''), poc.stockorderno, soi.stockorder_no)
+                (rsa2.psono = so.psono AND (rsa2.productid = soi.product_id OR rsa2.productname = soi.product_name))
+                OR rsa2.allocate_stockorder_no = COALESCE(NULLIF(poc.allocated_stockorderno, ''), poc.stockorderno, soi.stockorder_no)
                 OR rsa2.stockorder_no = COALESCE(NULLIF(poc.allocated_stockorderno, ''), poc.stockorderno, soi.stockorder_no)
                 OR (rsa2.clientid = so.clientid AND (rsa2.productid = soi.product_id OR rsa2.productname = soi.product_name))
             )
             AND LOWER(IFNULL(rsa2.status, '')) != 'cancel'
+            AND (rsa2.tedit IS NULL OR rsa2.tedit = '' OR rsa2.tedit = '0')
             ORDER BY 
-              CASE WHEN rsa2.allocate_stockorder_no = COALESCE(NULLIF(poc.allocated_stockorderno, ''), poc.stockorderno, soi.stockorder_no) THEN 1 
-                   WHEN rsa2.stockorder_no = COALESCE(NULLIF(poc.allocated_stockorderno, ''), poc.stockorderno, soi.stockorder_no) THEN 2 
-                   ELSE 3 END,
+              CASE WHEN rsa2.psono = so.psono AND (rsa2.productid = soi.product_id OR rsa2.productname = soi.product_name) THEN 1
+                   WHEN rsa2.allocate_stockorder_no = COALESCE(NULLIF(poc.allocated_stockorderno, ''), poc.stockorderno, soi.stockorder_no) THEN 2 
+                   WHEN rsa2.stockorder_no = COALESCE(NULLIF(poc.allocated_stockorderno, ''), poc.stockorderno, soi.stockorder_no) THEN 3 
+                   ELSE 4 END,
               rsa2.id DESC 
             LIMIT 1
         )
@@ -1144,6 +1144,8 @@ if ($action == "GetActiveFinalDispatchDates") {
         WHERE (soi.projectid = ? OR so.projectid = ?)
           AND soi.deliverydate IS NOT NULL 
           AND soi.deliverydate != '0000-00-00'
+          AND (soi.tedit IS NULL OR soi.tedit = '' OR soi.tedit = '0')
+          AND (so.tedit IS NULL OR so.tedit = '' OR so.tedit = '0')
           {$dateFilter}
         ORDER BY soi.deliverydate ASC, so.id DESC
     ";
@@ -1264,6 +1266,7 @@ if ($action == "GetActiveFinalDispatchDates") {
               AND productid != 'BOX_PACKING'
               AND is_box_packing = 0
               AND LOWER(IFNULL(status, '')) != 'cancelled'
+              AND (tedit IS NULL OR tedit = '' OR tedit = '0')
             GROUP BY original_soi_id, psono, sono, productid
         ";
         $siiStmt = $krfconn->prepare($siiSql);
@@ -1291,6 +1294,40 @@ if ($action == "GetActiveFinalDispatchDates") {
                 }
             }
             $siiStmt->close();
+        }
+    }
+
+    // 5b. Query active undispatched allocations from krf_readystock_allocation
+    $activeAllocByPsonoProd = [];
+    if (!empty($allPsonos)) {
+        $inRsaPso = implode(',', array_fill(0, count($allPsonos), '?'));
+        $rsaAllocSql = "
+            SELECT 
+                psono,
+                productid,
+                productname,
+                SUM(CASE 
+                    WHEN LOWER(IFNULL(status, '')) IN ('allocated', 'readytoload', 'readytodispatch')
+                    THEN GREATEST(0, CAST(allocate_ordqty AS SIGNED) - CAST(dispatchqty AS SIGNED)) 
+                    ELSE 0 
+                END) AS active_undispatched_alloc
+            FROM krf_readystock_allocation
+            WHERE psono IN ($inRsaPso)
+              AND LOWER(IFNULL(status, '')) NOT IN ('cancel', 'cancelled')
+              AND (tedit IS NULL OR tedit = '' OR tedit = '0')
+            GROUP BY psono, productid
+        ";
+        $rsaAllocStmt = $krfconn->prepare($rsaAllocSql);
+        if ($rsaAllocStmt) {
+            $rsaTypes = str_repeat('s', count($allPsonos));
+            $rsaAllocStmt->bind_param($rsaTypes, ...$allPsonos);
+            $rsaAllocStmt->execute();
+            $rsaAllocRes = $rsaAllocStmt->get_result();
+            while ($rsaAllocRow = $rsaAllocRes->fetch_assoc()) {
+                $psoKey = trim($rsaAllocRow['psono'] ?? '') . '___' . trim(strval($rsaAllocRow['productid'] ?? ''));
+                $activeAllocByPsonoProd[$psoKey] = intval($rsaAllocRow['active_undispatched_alloc'] ?? 0);
+            }
+            $rsaAllocStmt->close();
         }
     }
 
@@ -1335,6 +1372,7 @@ if ($action == "GetActiveFinalDispatchDates") {
             SELECT psono, product_id, product_name, status 
             FROM krf_sales_order_items 
             WHERE psono IN ($inPsoCancel)
+              AND (tedit IS NULL OR tedit = '' OR tedit = '0')
         ");
         if ($cStmt1) {
             $cStmt1->bind_param($typesPso, ...$allPsonos);
@@ -1366,6 +1404,7 @@ if ($action == "GetActiveFinalDispatchDates") {
             SELECT psono, product_id, product_name, status 
             FROM krf_provisional_sales_order_items 
             WHERE psono IN ($inPsoCancel)
+              AND (tedit IS NULL OR tedit = '' OR tedit = '0')
         ");
         if ($cStmt2) {
             $cStmt2->bind_param($typesPso, ...$allPsonos);
@@ -1571,35 +1610,47 @@ if ($action == "GetActiveFinalDispatchDates") {
         $readyPlantQty = intval($item['ready_plant_qty'] ?? 0);
         $hasPolyhousePlants = ($polyhousePlantQty > 0 || $readyPlantQty > 0);
 
-        // Dispatched Invoice calculation & remaining un-invoiced balance
-        $remainingUninvoicedAllocQty = max(0, $reservedQty - $dispatchedPlantQty);
-        $isFullyInvoiced = ($reservedQty > 0 && $dispatchedPlantQty >= $reservedQty);
-        $hasPreparedInvoiceItems = ($dispatchedPlantQty > 0 || ($isItemAllocated && $hasPreparedInvoice));
-
         $effectiveDispatched = 0;
         $isPhysicallyDispatched = (
-            in_array($itemStatus, ['dispatched', 'final dispatch', 'fulldispatch', 'completed', 'delivered']) || 
-            in_array($consumedStatus, ['dispatched', 'fulldispatch', 'completed', 'delivered']) || 
-            in_array($soStatus, ['dispatched', 'fulldispatch', 'completed']) ||
-            (!empty($item['dispatched_at']) && $item['dispatched_at'] !== '0000-00-00 00:00:00' && $item['dispatched_at'] !== '-') ||
-            ($dispatchedPlantQty > 0 && $remainingUninvoicedAllocQty <= 0)
-        );
-        $isPartialDispatched = (
-            !$isPhysicallyDispatched && (
-                in_array($itemStatus, ['partialdispatch', 'partial_dispatched']) ||
-                in_array($consumedStatus, ['partialdispatch', 'partial_dispatched']) ||
-                in_array($soStatus, ['partialdispatch', 'partial_dispatched']) ||
-                ($dispatchedPlantQty > 0 && $remainingUninvoicedAllocQty > 0)
-            )
+            $itemStatus === 'dispatched' || 
+            $consumedStatus === 'dispatched' || 
+            $itemStatus === 'final dispatch' ||
+            (!empty($item['dispatched_at']) && $item['dispatched_at'] !== '0000-00-00 00:00:00' && $item['dispatched_at'] !== '-')
         );
 
+        // Derive true active undispatched allocation (plants physically in beds waiting to be dispatched)
+        $rsaKey = (!empty($psono) && !empty($prodId)) ? ($psono . '___' . $prodId) : '';
+        $activeUndispAlloc = 0;
+        if (!empty($rsaKey) && isset($activeAllocByPsonoProd[$rsaKey])) {
+            $activeUndispAlloc = $activeAllocByPsonoProd[$rsaKey];
+        } elseif (!empty($item['rsa_status']) && in_array(strtolower(trim($item['rsa_status'])), ['allocated', 'readytoload', 'readytodispatch'])) {
+            $activeUndispAlloc = max(0, intval($item['rsa_allocate_ordqty'] ?? 0) - intval($item['rsa_dispatchqty'] ?? 0));
+        } elseif (in_array($consumedStatus, ['allocated', 'readytoload', 'readytodispatch', 'loaded']) && $consumedStatus !== 'dispatched') {
+            $activeUndispAlloc = max(0, $pocConsumed - $dispatchedPlantQty);
+        } elseif (($itemStatus === 'allocated' || $itemStatus === 'readytoload') && $itemStatus !== 'dispatched') {
+            $activeUndispAlloc = max(0, max($soiAlloc, $soiReserved) - $dispatchedPlantQty);
+        }
+
+        if ($isPhysicallyDispatched) {
+            $activeUndispAlloc = 0;
+        }
+
+        $rsaStatus = strtolower(trim($item['rsa_status'] ?? ''));
+        $rsaInvNo = trim($item['rsa_invoice_number'] ?? '');
+        $isRsaReadyToLoad = ($rsaStatus === 'readytoload' || (!empty($rsaInvNo) && $rsaStatus !== 'dispatched' && $rsaStatus !== 'cancel'));
+
+        $remainingUninvoicedAllocQty = max(0, $activeUndispAlloc - $dispatchedPlantQty);
+        $isFullyInvoiced = ($dispatchedPlantQty > 0 && $remainingUninvoicedAllocQty === 0);
+        $hasPreparedInvoiceItems = ($dispatchedPlantQty > 0 || ($isItemAllocated && $hasPreparedInvoice) || $isRsaReadyToLoad);
+
         // Attach standardized calculation flags
-        $item['allocated_qty'] = $reservedQty;
+        $item['allocated_qty'] = $activeUndispAlloc;
         $item['dispatched_plant_qty'] = $dispatchedPlantQty;
         $item['remaining_uninvoiced_alloc_qty'] = $remainingUninvoicedAllocQty;
         $item['is_fully_invoiced'] = $isFullyInvoiced ? 1 : 0;
         $item['is_physically_dispatched'] = $isPhysicallyDispatched ? 1 : 0;
         $item['has_prepared_invoice'] = $hasPreparedInvoiceItems ? 1 : 0;
+        $item['is_rsa_ready_to_load'] = $isRsaReadyToLoad ? 1 : 0;
 
         // Cancellation Check:
         // 1. If whole psono is cancelled (all products cancelled or SO/PSO status is cancelled):
@@ -1646,21 +1697,26 @@ if ($action == "GetActiveFinalDispatchDates") {
             $item['is_physically_dispatched'] = 0;
         } else if ($isPhysicallyDispatched) {
             $effectiveDispatched = ($dispatchedPlantQty > 0) ? $dispatchedPlantQty : max($orderQty, $reservedQty);
-            $item['dispatch_status_code'] = 'dispatched';
-            $item['dispatch_status_label'] = 'Fully Dispatched';
-        } else if ($isPartialDispatched && $remainingUninvoicedAllocQty <= 0 && $itemStatus !== 'readytoload' && $consumedStatus !== 'readytoload') {
-            $effectiveDispatched = ($dispatchedPlantQty > 0) ? $dispatchedPlantQty : max($orderQty, $reservedQty);
-            $item['dispatch_status_code'] = 'partial_dispatched';
-            $item['dispatch_status_label'] = 'Partially Dispatched';
-        } else if ($remainingUninvoicedAllocQty > 0 && ($itemStatus !== 'readytoload' && $consumedStatus !== 'readytoload')) {
-            // Has allocated plants and invoice is NOT prepared yet for this tranche:
-            // MUST SHOW IN ALLOCATED TAB!
+            if ($effectiveDispatched > 0 && $balanceQty > 0 && $effectiveDispatched < $orderQty) {
+                $item['dispatch_status_code'] = 'partial_dispatched';
+                $item['dispatch_status_label'] = 'Partially Dispatched';
+            } else {
+                $item['dispatch_status_code'] = 'dispatched';
+                $item['dispatch_status_label'] = 'Fully Dispatched';
+            }
+        } else if ($isRsaReadyToLoad || $isFullyInvoiced || $itemStatus === 'readytoload' || $consumedStatus === 'readytoload') {
+            // Ready to Loading (as per Allocation Master krf_readystock_allocation or fully invoiced)
+            $item['dispatch_status_code'] = 'readytoload';
+            $item['dispatch_status_label'] = 'Ready to Loading';
+        } else if ($reservedQty > 0 && $remainingUninvoicedAllocQty > 0) {
+            // Has allocated plants and invoice dispatched is 0 or less than allocated:
+            // MUST STILL SHOW IN ALLOCATED TAB!
             $item['dispatch_status_code'] = 'allocated';
             $item['dispatch_status_label'] = ($dispatchedPlantQty > 0) ? 'Partially Invoiced (Allocated)' : 'Allocated (For Prepared Invoice)';
         } else if ($isItemAllocated && $consumedStatus === 'readytodispatch' && ($hasPolyhousePlants || ($item['polyhouse_tray_count'] ?? 0) > 0)) {
             $item['dispatch_status_code'] = 'readytodispatch';
             $item['dispatch_status_label'] = 'Ready to Dispatch';
-        } else if ($isItemAllocated && ($itemStatus === 'readytoload' || $consumedStatus === 'readytoload' || ($hasPreparedInvoiceItems && $isFullyInvoiced))) {
+        } else if ($isItemAllocated && $hasPreparedInvoiceItems) {
             $item['dispatch_status_code'] = 'readytoload';
             $item['dispatch_status_label'] = 'Ready to Loading';
         } else if ($reservedQty > 0 || $consumedStatus === 'allocated' || $itemStatus === 'allocated') {
@@ -1690,7 +1746,12 @@ if ($action == "GetActiveFinalDispatchDates") {
         $isCancelled = !empty($item['is_cancelled']);
 
         $fulfilledQty = ($dispatchedQty > 0) ? $dispatchedQty : $allocatedQty;
-        $pendingBalance = $orderQty - $fulfilledQty;
+        $pendingBalance = max(0, $orderQty - ($allocatedQty + $dispatchedQty));
+
+        $totalSoOrderQty = $orderQty;
+        $totalSoAllocQty = $allocatedQty;
+        $totalSoDispQty = $dispatchedQty;
+        $totalSoPendingQty = $pendingBalance;
 
         if (!$isCancelled && $fulfilledQty > 0 && $pendingBalance > 0) {
             // 1. Fulfilled Tranche (shows in Final Dispatched / Allocated / ReadyToLoad)
@@ -1702,6 +1763,10 @@ if ($action == "GetActiveFinalDispatchDates") {
             $fulfilledItem['has_partial_pending'] = 1;
             $fulfilledItem['order_qty'] = $orderQty;
             $fulfilledItem['balance_reserved_qty'] = 0;
+            $fulfilledItem['total_so_order_qty'] = $totalSoOrderQty;
+            $fulfilledItem['total_so_allocated_qty'] = $totalSoAllocQty;
+            $fulfilledItem['total_so_dispatched_qty'] = $totalSoDispQty;
+            $fulfilledItem['total_so_pending_qty'] = $totalSoPendingQty;
             $expandedData[] = $fulfilledItem;
 
             // 2. Residual Pending Tranche (shows in Pending Allocation tab)
@@ -1721,6 +1786,10 @@ if ($action == "GetActiveFinalDispatchDates") {
             $pendingItem['dispatched_plant_qty'] = 0;
             $pendingItem['is_physically_dispatched'] = 0;
             $pendingItem['has_prepared_invoice'] = 0;
+            $pendingItem['total_so_order_qty'] = $totalSoOrderQty;
+            $pendingItem['total_so_allocated_qty'] = $totalSoAllocQty;
+            $pendingItem['total_so_dispatched_qty'] = $totalSoDispQty;
+            $pendingItem['total_so_pending_qty'] = $totalSoPendingQty;
             $pendingItem['dispatch_status_code'] = 'pending';
             $pendingItem['dispatch_status_label'] = 'Pending Allocation';
             $pendingItem['effective_stockorderno'] = (!empty($item['original_sown_stockorderno']) && $item['original_sown_stockorderno'] !== 'N/A') ? $item['original_sown_stockorderno'] : ($item['soi_stockorderno'] ?? 'Not Allocated');
@@ -1737,6 +1806,10 @@ if ($action == "GetActiveFinalDispatchDates") {
             $item['original_total_order_qty'] = $orderQty;
             $item['fulfilled_qty'] = $fulfilledQty;
             $item['pending_balance_qty'] = max(0, $pendingBalance);
+            $item['total_so_order_qty'] = $totalSoOrderQty;
+            $item['total_so_allocated_qty'] = $totalSoAllocQty;
+            $item['total_so_dispatched_qty'] = $totalSoDispQty;
+            $item['total_so_pending_qty'] = $totalSoPendingQty;
             $expandedData[] = $item;
         }
     }
@@ -4216,7 +4289,7 @@ if ($action == "GetActiveFinalDispatchDates") {
             $totalShiftingQty = ($isShiftedInt === 1) ? 0 : (($totalAllocatedExtraPlants > 0) ? $totalAllocatedExtraPlants : ($shiftingQty > 0 ? $shiftingQty : intval(round($intTotalAlloc * ($percentExtraShifting / 100)))));
             $itemStatus = ($origOrderQty > 0 && $intTotalAlloc >= $origOrderQty) ? 'Allocated' : (($intTotalAlloc > 0) ? 'Partial Allocated' : 'Confirmed');
 
-            // 2. Update krf_sales_order_items (preserve original quantity and stockorder_no intact, protect dispatched statuses)
+            // 2. Update krf_sales_order_items (preserve original quantity and stockorder_no intact)
             $updSoi = "
                 UPDATE krf_sales_order_items soi
                 SET soi.reservedqty = ?,
@@ -4227,16 +4300,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                     soi.isshifted = ?,
                     soi.percentextrashifting = ?,
                     soi.shiftingqty = ?,
-                    soi.status = CASE
-                        WHEN LOWER(TRIM(IFNULL(soi.status, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched', 'delivered', 'completed') THEN soi.status
-                        WHEN ? >= IFNULL(soi.quantity, 0) THEN 'Allocated'
-                        WHEN ? > 0 THEN 'Partial Allocated'
-                        ELSE 'Confirmed'
-                    END,
-                    soi.actionstatus = CASE
-                        WHEN LOWER(TRIM(IFNULL(soi.actionstatus, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched') THEN soi.actionstatus
-                        ELSE soi.actionstatus
-                    END,
+                    soi.status = ?,
                     soi.ammendedby = ?,
                     soi.updateamended = NOW()
                 WHERE soi.id = ?
@@ -4244,7 +4308,7 @@ if ($action == "GetActiveFinalDispatchDates") {
             $soiStmt = $krfconn->prepare($updSoi);
             if ($soiStmt) {
                 $soiStmt->bind_param(
-                    "iiiiisdiissi",
+                    "iiiiisdissi",
                     $intTotalAlloc,
                     $intTotalAlloc,
                     $intTotalAlloc,
@@ -4253,8 +4317,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                     $isShiftedStr,
                     $percentExtraShifting,
                     $totalShiftingQty,
-                    $intTotalAlloc,
-                    $intTotalAlloc,
+                    $itemStatus,
                     $loginid,
                     $soiId
                 );
@@ -4262,7 +4325,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                 $soiStmt->close();
             }
 
-            // 3. Update krf_sales_order status (Allocated if all items allocated, PartialAllocated if some remain unallocated; protect dispatched status)
+            // 3. Update krf_sales_order status (Allocated if all items allocated, PartialAllocated if some remain unallocated)
             if (!empty($psono) || !empty($sono)) {
                 $hasUnalloc = false;
                 $chkItemsStmt = $krfconn->prepare("
@@ -4271,7 +4334,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                     WHERE ((psono = ? AND ? != '') OR (sono = ? AND ? != ''))
                       AND id != ?
                       AND (allocate_ordqty IS NULL OR allocate_ordqty < quantity)
-                      AND LOWER(IFNULL(status, '')) NOT IN ('delivered', 'completed', 'dispatched', 'fulldispatch', 'partialdispatch', 'cancelled')
+                      AND LOWER(IFNULL(status, '')) NOT IN ('delivered', 'completed', 'cancelled')
                 ");
                 if ($chkItemsStmt) {
                     $chkItemsStmt->bind_param("ssssi", $psono, $psono, $sono, $sono, $soiId);
@@ -4290,14 +4353,11 @@ if ($action == "GetActiveFinalDispatchDates") {
 
                 $updSo = "
                     UPDATE krf_sales_order
-                    SET status = CASE
-                            WHEN LOWER(TRIM(IFNULL(status, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched', 'delivered', 'completed') THEN status
-                            ELSE ?
-                        END,
+                    SET status = ?,
                         updated_at = NOW(),
                         updated_by = ?
                     WHERE ((psono = ? AND ? != '') OR (sono = ? AND ? != ''))
-                      AND LOWER(IFNULL(status, '')) NOT IN ('delivered', 'completed', 'dispatched', 'fulldispatch', 'partialdispatch')
+                      AND LOWER(IFNULL(status, '')) NOT IN ('delivered', 'completed', 'dispatched')
                 ";
                 $soStmt = $krfconn->prepare($updSo);
                 if ($soStmt) {
@@ -4709,16 +4769,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                 soi.isshifted = ?,
                 soi.percentextrashifting = ?,
                 soi.shiftingqty = ?,
-                soi.status = CASE
-                    WHEN LOWER(TRIM(IFNULL(soi.status, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched', 'delivered', 'completed') THEN soi.status
-                    WHEN ? >= IFNULL(soi.quantity, 0) THEN 'Allocated'
-                    WHEN ? > 0 THEN 'Partial Allocated'
-                    ELSE 'Confirmed'
-                END,
-                soi.actionstatus = CASE
-                    WHEN LOWER(TRIM(IFNULL(soi.actionstatus, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched') THEN soi.actionstatus
-                    ELSE soi.actionstatus
-                END,
+                soi.status = ?,
                 soi.ammendedby = ?,
                 soi.updateamended = NOW()
             WHERE soi.id = ?
@@ -4728,7 +4779,7 @@ if ($action == "GetActiveFinalDispatchDates") {
             throw new Exception("Failed to prepare update for krf_sales_order_items: " . $krfconn->error);
         }
         $soiStmt->bind_param(
-            "iiiiisdiissi",
+            "iiiiisdissi",
             $intAllocQty,
             $intAllocQty,
             $intAllocQty,
@@ -4737,8 +4788,7 @@ if ($action == "GetActiveFinalDispatchDates") {
             $isShiftedStr,
             $percentExtraShifting,
             $shiftingQty,
-            $intAllocQty,
-            $intAllocQty,
+            $itemStatusA,
             $loginid,
             $soiId
         );
@@ -4746,7 +4796,7 @@ if ($action == "GetActiveFinalDispatchDates") {
         $soiStmt->close();
 
         // ----------------------------------------------------
-        // 2b. ORDER A: Update krf_sales_order status (Allocated if all items allocated, PartialAllocated if some remain unallocated; protect dispatched status)
+        // 2b. ORDER A: Update krf_sales_order status (Allocated if all items allocated, PartialAllocated if some remain unallocated)
         // ----------------------------------------------------
         if (!empty($psono) || !empty($sono)) {
             $hasUnalloc = false;
@@ -4756,7 +4806,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                 WHERE ((psono = ? AND ? != '') OR (sono = ? AND ? != ''))
                   AND id != ?
                   AND (allocate_ordqty IS NULL OR allocate_ordqty < quantity)
-                  AND LOWER(IFNULL(status, '')) NOT IN ('delivered', 'completed', 'dispatched', 'fulldispatch', 'partialdispatch', 'cancelled')
+                  AND LOWER(IFNULL(status, '')) NOT IN ('delivered', 'completed', 'cancelled')
             ");
             if ($chkItemsStmt) {
                 $chkItemsStmt->bind_param("ssssi", $psono, $psono, $sono, $sono, $soiId);
@@ -4775,14 +4825,11 @@ if ($action == "GetActiveFinalDispatchDates") {
 
             $updSo = "
                 UPDATE krf_sales_order
-                SET status = CASE
-                        WHEN LOWER(TRIM(IFNULL(status, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched', 'delivered', 'completed') THEN status
-                        ELSE ?
-                    END,
+                SET status = ?,
                     updated_at = NOW(),
                     updated_by = ?
                 WHERE ((psono = ? AND ? != '') OR (sono = ? AND ? != ''))
-                  AND LOWER(IFNULL(status, '')) NOT IN ('delivered', 'completed', 'dispatched', 'fulldispatch', 'partialdispatch')
+                  AND LOWER(IFNULL(status, '')) NOT IN ('delivered', 'completed', 'dispatched')
             ";
             $soStmt = $krfconn->prepare($updSo);
             if ($soStmt) {
@@ -5057,7 +5104,7 @@ if ($action == "GetActiveFinalDispatchDates") {
             }
             $chkBStmt->close();
 
-            // 4.2 Update krf_sales_order_items for Order B (preserve quantity intact, protect dispatched statuses)
+            // 4.2 Update krf_sales_order_items for Order B (preserve quantity intact)
             if ($orderB_soiId > 0) {
                 $updBSoi = "
                     UPDATE krf_sales_order_items soi
@@ -5070,14 +5117,9 @@ if ($action == "GetActiveFinalDispatchDates") {
                         soi.percentextrashifting = 0,
                         soi.shiftingqty = 0,
                         soi.status = CASE 
-                            WHEN LOWER(TRIM(IFNULL(soi.status, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched', 'delivered', 'completed') THEN soi.status
                             WHEN ? >= IFNULL(soi.quantity, 0) THEN 'Allocated'
                             WHEN ? > 0 THEN 'Partial Allocated'
                             ELSE 'Confirmed'
-                        END,
-                        soi.actionstatus = CASE
-                            WHEN LOWER(TRIM(IFNULL(soi.actionstatus, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched') THEN soi.actionstatus
-                            ELSE soi.actionstatus
                         END,
                         soi.ammendedby = ?,
                         soi.updateamended = NOW()
@@ -5091,7 +5133,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                 }
             }
 
-            // 4.2b Update krf_sales_order for Order B (Allocated if all items allocated, PartialAllocated if some remain unallocated; protect dispatched status)
+            // 4.2b Update krf_sales_order for Order B (Allocated if all items allocated, PartialAllocated if some remain unallocated)
             if (!empty($orderB_psono) || !empty($orderB_sono)) {
                 $hasUnallocB = false;
                 $chkBStmt = $krfconn->prepare("
@@ -5100,7 +5142,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                     WHERE ((psono = ? AND ? != '') OR (sono = ? AND ? != ''))
                       AND id != ?
                       AND (allocate_ordqty IS NULL OR allocate_ordqty = 0)
-                      AND LOWER(IFNULL(status, '')) NOT IN ('allocated', 'dispatched', 'fulldispatch', 'partialdispatch', 'delivered', 'completed', 'cancelled')
+                      AND LOWER(IFNULL(status, '')) NOT IN ('allocated', 'dispatched', 'delivered', 'completed', 'cancelled')
                 ");
                 if ($chkBStmt) {
                     $chkBStmt->bind_param("ssssi", $orderB_psono, $orderB_psono, $orderB_sono, $orderB_sono, $orderB_soiId);
@@ -5115,14 +5157,11 @@ if ($action == "GetActiveFinalDispatchDates") {
 
                 $updSoB = "
                     UPDATE krf_sales_order
-                    SET status = CASE
-                            WHEN LOWER(TRIM(IFNULL(status, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched', 'delivered', 'completed') THEN status
-                            ELSE ?
-                        END,
+                    SET status = ?,
                         updated_at = NOW(),
                         updated_by = ?
                     WHERE ((psono = ? AND ? != '') OR (sono = ? AND ? != ''))
-                      AND LOWER(IFNULL(status, '')) NOT IN ('delivered', 'completed', 'dispatched', 'fulldispatch', 'partialdispatch')
+                      AND LOWER(IFNULL(status, '')) NOT IN ('delivered', 'completed', 'dispatched')
                 ";
                 $soBStmt = $krfconn->prepare($updSoB);
                 if ($soBStmt) {
@@ -5261,7 +5300,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                     $uppStmt->execute();
                     $uppStmt->close();
 
-                    // Restore Order C's soi row (preserve quantity intact, protect dispatched status)
+                    // Restore Order C's soi row (preserve quantity intact)
                     if ($prevSoiId > 0) {
                         $updPrevSoi = "
                             UPDATE krf_sales_order_items soi
@@ -5271,14 +5310,9 @@ if ($action == "GetActiveFinalDispatchDates") {
                                 soi.healthyplant = ?,
                                 soi.isshifted = 'yes',
                                 soi.status = CASE 
-                                    WHEN LOWER(TRIM(IFNULL(soi.status, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched', 'delivered', 'completed') THEN soi.status
                                     WHEN ? >= IFNULL(soi.quantity, 0) THEN 'Allocated'
                                     WHEN ? > 0 THEN 'Partial Allocated'
                                     ELSE 'Confirmed'
-                                END,
-                                soi.actionstatus = CASE
-                                    WHEN LOWER(TRIM(IFNULL(soi.actionstatus, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched') THEN soi.actionstatus
-                                    ELSE soi.actionstatus
                                 END,
                                 soi.updateamended = NOW(),
                                 soi.ammendedby = ?
@@ -6282,6 +6316,7 @@ if ($action == "GetActiveFinalDispatchDates") {
         LEFT JOIN sales_invoice_items sii ON sii.invoice_id = si.id AND LOWER(IFNULL(sii.status, '')) != 'cancelled'
         WHERE (si.psono = ? OR si.sono = ? OR si.sono LIKE CONCAT(?, '-%'))
           AND LOWER(IFNULL(si.status, '')) != 'cancelled'
+          AND (si.tedit IS NULL OR si.tedit = '' OR si.tedit = '0')
         GROUP BY si.id
         ORDER BY si.id DESC
     ";
@@ -6333,20 +6368,31 @@ if ($action == "GetActiveFinalDispatchDates") {
         }
     }
 
-    // 3. Fetch ALL items in this Provisional Sales Order (excluding items created for past dispatch invoices)
+    // 3. Fetch items in this Provisional Sales Order that have active allocations (status: allocated, readytoload, or readytodispatch) in krf_readystock_allocation
     $itemsSql = "
         SELECT soi.* 
         FROM krf_sales_order_items soi
+        INNER JOIN krf_readystock_allocation rsa ON (
+            ((rsa.psono = soi.psono AND soi.psono != '') OR (rsa.clientid = soi.clientid AND (soi.psono IS NULL OR soi.psono = '')))
+            AND (rsa.productid = soi.product_id OR rsa.productname = soi.product_name)
+            AND (rsa.tedit IS NULL OR rsa.tedit = '' OR rsa.tedit = '0')
+            AND LOWER(IFNULL(rsa.status, '')) IN ('allocated', 'readytoload', 'readytodispatch')
+        )
+        LEFT JOIN krf_productionorder_consumed poc ON (
+            poc.psono = soi.psono
+            AND (poc.product_id = soi.product_id OR poc.product_name = soi.product_name)
+            AND (poc.tedit IS NULL OR poc.tedit = '' OR poc.tedit = '0')
+            AND LOWER(IFNULL(poc.confirmstatus, '')) != 'cancelled'
+            AND LOWER(IFNULL(poc.status, '')) NOT IN ('cancelled', 'cancel')
+        )
         WHERE ((soi.sono = ? AND ? != '') 
            OR (soi.psono = ? AND ? != '' AND (soi.invoiceno IS NULL OR soi.invoiceno = '')))
-          AND (
-              LOWER(IFNULL(soi.status, '')) NOT IN ('cancelled', 'cancel')
-              OR IFNULL(soi.allocate_ordqty, 0) > 0 
-              OR IFNULL(soi.reservedqty, 0) > 0
-          )
+          AND (soi.tedit IS NULL OR soi.tedit = '' OR soi.tedit = '0')
+          AND LOWER(IFNULL(soi.status, '')) NOT IN ('cancelled', 'cancel')
           AND soi.product_id != 'BOX_PACKING'
           AND soi.product_sku != 'BOX-PACKING'
           AND soi.product_name NOT LIKE '%Box Packing%'
+        GROUP BY soi.id
         ORDER BY soi.id ASC
     ";
     $iStmt = $krfconn->prepare($itemsSql);
@@ -6442,8 +6488,8 @@ if ($action == "GetActiveFinalDispatchDates") {
                    isshifted, percentextrashifting, shiftingqty, productname, productid, allocatedbed, status, psono, dispatchqty
             FROM krf_readystock_allocation
             WHERE {$rsaWhere}
-              AND LOWER(IFNULL(status, '')) NOT IN ('cancel', 'cancelled')
-              AND (tedit IS NULL OR tedit = '')
+              AND LOWER(IFNULL(status, '')) IN ('allocated', 'readytoload', 'readytodispatch')
+              AND (tedit IS NULL OR tedit = '' OR tedit = '0')
             ORDER BY id ASC
         ");
         $rsa = null;
@@ -6564,7 +6610,7 @@ if ($action == "GetActiveFinalDispatchDates") {
         // Query Total Allocated Quantity across all orders in karjeefarm.krf_readystock_allocation for this allocated batch
         $totalBatchAllocated = 0;
         if (!empty($allocatedStockNo) && $allocatedStockNo !== 'Not Allocated' && $allocatedStockNo !== '0') {
-            $rsaTotalStmt = $krfconn->prepare("SELECT SUM(allocate_ordqty) AS total_allocated FROM krf_readystock_allocation WHERE allocate_stockorder_no = ? AND LOWER(IFNULL(status, '')) != 'cancel' AND (tedit IS NULL OR tedit = '')");
+            $rsaTotalStmt = $krfconn->prepare("SELECT SUM(allocate_ordqty) AS total_allocated FROM krf_readystock_allocation WHERE allocate_stockorder_no = ? AND LOWER(IFNULL(status, '')) != 'cancel' AND (tedit IS NULL OR tedit = '' OR tedit = '0')");
             if ($rsaTotalStmt) {
                 $rsaTotalStmt->bind_param("s", $allocatedStockNo);
                 $rsaTotalStmt->execute();
@@ -7574,6 +7620,7 @@ if ($action == "GetActiveFinalDispatchDates") {
         LEFT JOIN sales_invoice_items sii ON (sii.invoice_id = si.id OR sii.invoiceno = si.invoiceno) AND LOWER(IFNULL(sii.status, '')) != 'cancelled'
         WHERE ((si.psono = ? AND ? != '') OR (si.sono = ? AND ? != '') OR (si.sono LIKE ? AND ? != ''))
           AND LOWER(IFNULL(si.status, '')) != 'cancelled'
+          AND (si.tedit IS NULL OR si.tedit = '' OR si.tedit = '0')
         GROUP BY si.id
         ORDER BY si.id DESC
     ";
@@ -7786,6 +7833,48 @@ if ($action == "GetActiveFinalDispatchDates") {
                 );
                 $updPoc->execute();
                 $updPoc->close();
+            }
+
+            // Update krf_readystock_allocation for this batch/order
+            $updRsaStep1 = $krfconn->prepare("
+                UPDATE krf_readystock_allocation
+                SET allocate_ordqty = ?,
+                    healthyplant = ?,
+                    unhealthyplant = ?,
+                    isshifted = ?,
+                    percentextrashifting = ?,
+                    shiftingqty = ?,
+                    status = CASE WHEN LOWER(IFNULL(status, '')) != 'dispatched' THEN 'readytoload' ELSE status END,
+                    updated_at = NOW(),
+                    updated_by = ?
+                WHERE (
+                    ((psono = ? AND ? != '') AND (productid = ? OR productname = ?))
+                    OR ((allocate_stockorder_no = ? OR stockorder_no = ?) AND ? != '')
+                )
+                AND (tedit IS NULL OR tedit = '' OR tedit = '0')
+                AND LOWER(IFNULL(status, '')) != 'cancel'
+            ");
+            if ($updRsaStep1) {
+                $itProdName = !empty($it['product_name']) ? trim($it['product_name']) : '';
+                $updRsaStep1->bind_param(
+                    "iiisdissssssss",
+                    $aQty,
+                    $hPlant,
+                    $uPlant,
+                    $isShStr,
+                    $pExtra,
+                    $sQty,
+                    $loginid,
+                    $psono,
+                    $psono,
+                    $pId,
+                    $itProdName,
+                    $stkNo,
+                    $stkNo,
+                    $stkNo
+                );
+                $updRsaStep1->execute();
+                $updRsaStep1->close();
             }
         }
 
@@ -8086,8 +8175,6 @@ if ($action == "GetActiveFinalDispatchDates") {
                 $updAllItemDates->close();
             }
         }
-
-        // Dispatched invoices and items are never modified or reset here (only active freight charges updated)
 
         $krfconn->commit();
         echo json_encode([
@@ -8473,7 +8560,6 @@ if ($action == "GetActiveFinalDispatchDates") {
     exit;
 
 } else if ($action == "SaveDispatchInvoice") {
-    safeCleanupReadyStockConstraints($krfconn);
     $projectid = intval($_POST['projectid'] ?? 0);
     $sono = trim($_POST['sono'] ?? '');
     $psono = trim($_POST['psono'] ?? '');
@@ -8687,27 +8773,6 @@ if ($action == "GetActiveFinalDispatchDates") {
                 : (function_exists('getNewDispatchInvoiceNumber') ? getNewDispatchInvoiceNumber($krfconn, $psono, $sono) : "KF/" . date('y') . '-' . (date('y') + 1) . "/1");
         }
 
-        // Check existing status of the invoice being created/edited BEFORE cleaning up records
-        $explicitEditInvNo = trim($_POST['edit_invoiceno'] ?? '');
-        $targetInvNo = !empty($explicitEditInvNo) ? $explicitEditInvNo : $dinvoiceno;
-        $existingInvoiceStatus = 'readytoload';
-        if (!empty($targetInvNo)) {
-            $chkPrevStatusStmt = $krfconn->prepare("SELECT status FROM sales_invoice WHERE invoiceno = ? LIMIT 1");
-            if ($chkPrevStatusStmt) {
-                $chkPrevStatusStmt->bind_param("s", $targetInvNo);
-                $chkPrevStatusStmt->execute();
-                $prevStRow = $chkPrevStatusStmt->get_result()->fetch_assoc();
-                if ($prevStRow && !empty($prevStRow['status'])) {
-                    $stLower = strtolower(trim($prevStRow['status']));
-                    if (in_array($stLower, ['dispatched', 'final dispatch', 'fulldispatch', 'partialdispatch', 'delivered', 'completed'])) {
-                        $existingInvoiceStatus = $stLower;
-                    }
-                }
-                $chkPrevStatusStmt->close();
-            }
-        }
-        $isTargetInvoiceDispatched = ($existingInvoiceStatus !== 'readytoload');
-
         // Clean up previous dispatched items & dispatch header for this invoice if editing
         $delOldItems = $krfconn->prepare("
             DELETE FROM krf_sales_order_items 
@@ -8745,17 +8810,6 @@ if ($action == "GetActiveFinalDispatchDates") {
             $delOldSalesInv->bind_param("s", $dinvoiceno);
             $delOldSalesInv->execute();
             $delOldSalesInv->close();
-        }
-
-        // If an explicit previous invoice was being edited, clean up any previous invoice records under that number too
-        if (!empty($explicitEditInvNo) && $explicitEditInvNo !== $dinvoiceno) {
-            $escOldInv = $krfconn->real_escape_string($explicitEditInvNo);
-            $escPso = $krfconn->real_escape_string($psono);
-            $escSo = $krfconn->real_escape_string($sono);
-            $krfconn->query("DELETE FROM sales_invoice_items WHERE invoiceno = '{$escOldInv}'");
-            $krfconn->query("DELETE FROM sales_invoice WHERE invoiceno = '{$escOldInv}'");
-            $krfconn->query("DELETE FROM krf_sales_order_items WHERE invoiceno = '{$escOldInv}' AND ((psono = '{$escPso}' AND '{$escPso}' != '') OR (sono LIKE CONCAT('{$escSo}', '%')))");
-            $krfconn->query("DELETE FROM krf_sales_order WHERE invoicetype = 'dispatchinvoice' AND dinvoiceno = '{$escOldInv}' AND ((psono = '{$escPso}' AND '{$escPso}' != '') OR (sono LIKE CONCAT('{$escSo}', '%')))");
         }
 
         // Archive/supersede any earlier un-dispatched readytoload invoices for this psono
@@ -8927,8 +8981,8 @@ if ($action == "GetActiveFinalDispatchDates") {
             $insSoStmt->close();
         }
 
-        // Also ensure dinvoiceno, serialno, invoicedate, total_amount, grand_total on base provisional sales order (protect dispatched statuses from being demoted or overwritten)
-        $updBaseSo = $krfconn->prepare("UPDATE krf_sales_order SET dinvoiceno = ?, serialno = ?, invoicedate = ?, total_amount = ?, grand_total = ?, status = CASE WHEN LOWER(TRIM(IFNULL(status, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched', 'delivered', 'completed') THEN status ELSE status END, updated_at = NOW(), updated_by = ? WHERE (psono = ? AND ? != '') OR (sono = ? AND ? != '')");
+        // Also ensure dinvoiceno, serialno, invoicedate, total_amount, grand_total on base provisional sales order
+        $updBaseSo = $krfconn->prepare("UPDATE krf_sales_order SET dinvoiceno = ?, serialno = ?, invoicedate = ?, total_amount = ?, grand_total = ?, updated_at = NOW(), updated_by = ? WHERE (psono = ? AND ? != '') OR (sono = ? AND ? != '')");
         if ($updBaseSo) {
             $updBaseSo->bind_param("sisddsssss", $dinvoiceno, $invoiceSerialNo, $effInvoiceDate, $total_amount, $grand_total, $loginid, $psono, $psono, $sono, $sono);
             $updBaseSo->execute();
@@ -8996,14 +9050,14 @@ if ($action == "GetActiveFinalDispatchDates") {
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?
+                ?, ?, 'readytoload', ?, ?
             )
         ";
         $insSalesInvStmt = $krfconn->prepare($insSalesInvSql);
         $salesInvoiceId = 0;
         if ($insSalesInvStmt) {
             $insSalesInvStmt->bind_param(
-                "iiisssissssssssssssdddddddddddssssssssss",
+                "iiisssissssssssssssdddddddddddsssssssss",
                 $effCompanyId, $effSubCompanyId, $effProjectId, $psono, $dispatchSono,
                 $dinvoiceno, $invoiceSerialNo, $effInvoiceDate,
                 $effClientId, $effClientName, $effCustType, $effGstin, $effMobileNo, $effEmailId,
@@ -9011,7 +9065,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                 $sumTaxable, $sumCgst, $sumSgst, $sumIgst, $sumTax,
                 $sumOtherDiscount, $roundoffAmt, $grand_total, $grand_total, $invPaidAmt, $invBalanceAmt,
                 $normPickupType, $vehicleno, $drivername, $drivermobileno, $effSchedDate,
-                $effPaymentTerms, $effRemarks, $existingInvoiceStatus, $loginid, $loginid
+                $effPaymentTerms, $effRemarks, $loginid, $loginid
             );
             $insSalesInvStmt->execute();
             $salesInvoiceId = $insSalesInvStmt->insert_id;
@@ -9129,7 +9183,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                     ?, ?, ?, ?,
                     ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?
+                    ?, ?, ?, 'readytoload', ?
                 )
             ";
             $insSiiStmt = $krfconn->prepare($insSiiSql);
@@ -9138,14 +9192,14 @@ if ($action == "GetActiveFinalDispatchDates") {
                 $totPlts = $aQty + $sQty;
                 $hsnCode = '';
                 $insSiiStmt->bind_param(
-                    "iissssisssssiiiisdiiddddddddddddsss",
+                    "iissssisssssiiiisdiiddddddddddddss",
                     $salesInvoiceId, $effProjectId, $effClientId, $psono, $dispatchSono, $dinvoiceno,
                     $itemId, $stkNo, $pId, $prodSku, $prodName,
                     $hsnCode, $isBpInt, $aQty, $hPlant, $uPlant,
                     $isShStr, $pExtra, $sQty, $totPlts,
                     $iRate, $iDiscPct, $iDiscAmt, $iTaxable,
                     $iCgstP, $iCgstA, $iSgstP, $iSgstA, $iIgstP, $iIgstA,
-                    $iTaxAmt, $iAmount, $delivDate, $existingInvoiceStatus, $confirmRemark
+                    $iTaxAmt, $iAmount, $delivDate, $confirmRemark
                 );
                 $insSiiStmt->execute();
                 $insSiiStmt->close();
@@ -9153,21 +9207,11 @@ if ($action == "GetActiveFinalDispatchDates") {
                 throw new Exception("Failed to prepare sales_invoice_items insert: " . $krfconn->error);
             }
 
-            // UPDATE original provisional item delivery date & status (crops only, protect dispatched status)
+            // UPDATE original provisional item delivery date & status (crops only)
             if ($itemId > 0 && !$isBoxPacking) {
-                $isDispatchedFlagInt = $isTargetInvoiceDispatched ? 1 : 0;
                 $updOrigSoi = $krfconn->prepare("
                     UPDATE krf_sales_order_items SET
-                        actionstatus = CASE
-                            WHEN LOWER(TRIM(IFNULL(actionstatus, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched') THEN actionstatus
-                            WHEN LOWER(TRIM(IFNULL(status, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched', 'final dispatch') THEN actionstatus
-                            WHEN ? = 1 THEN actionstatus
-                            ELSE 'readytoload'
-                        END,
-                        status = CASE 
-                            WHEN LOWER(TRIM(IFNULL(status, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched', 'final dispatch', 'delivered', 'completed') THEN status 
-                            ELSE status 
-                        END,
+                        actionstatus = 'readytoload',
                         deliverydate = CASE WHEN ? != '' THEN ? ELSE deliverydate END,
                         confirmdeliverydate = CASE WHEN ? != '' THEN ? ELSE confirmdeliverydate END,
                         ammendedby = ?,
@@ -9175,7 +9219,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                     WHERE id = ?
                 ");
                 if ($updOrigSoi) {
-                    $updOrigSoi->bind_param("isssssi", $isDispatchedFlagInt, $delivDate, $delivDate, $confirmDelivDate, $confirmDelivDate, $loginid, $itemId);
+                    $updOrigSoi->bind_param("sssssi", $delivDate, $delivDate, $confirmDelivDate, $confirmDelivDate, $loginid, $itemId);
                     $updOrigSoi->execute();
                     $updOrigSoi->close();
                 }
@@ -9184,128 +9228,62 @@ if ($action == "GetActiveFinalDispatchDates") {
             // Update consumed table to readytoload (crops only)
             // Preserves individual batch allocations (e.g. 500 + 500) set by UpdateAllocation!
             if (!$isBoxPacking && !empty($stkNo)) {
-                $isDispatchedFlagInt = $isTargetInvoiceDispatched ? 1 : 0;
                 $updPoc = $krfconn->prepare("
                     UPDATE krf_productionorder_consumed SET
                         isshifted = ?,
                         percentextrashifting = ?,
                         extraqtyforshifting = ?,
-                        status = CASE
-                            WHEN LOWER(TRIM(IFNULL(status, ''))) IN ('fulldispatch', 'partialdispatch', 'dispatched', 'final dispatch') THEN status
-                            WHEN ? = 1 THEN status
-                            ELSE 'readytoload'
-                        END,
+                        status = 'readytoload',
                         updated_at = NOW()
                     WHERE ((psono = ? AND ? != '' AND (product_id = ? OR product_name = ?))
                        OR (sono = ? AND ? != '' AND (product_id = ? OR product_name = ?)))
                       AND IFNULL(tedit, '') = ''
-                      AND LOWER(TRIM(IFNULL(status, ''))) NOT IN ('fulldispatch', 'partialdispatch', 'dispatched', 'final dispatch')
                 ");
                 if ($updPoc) {
-                    $updPoc->bind_param("idisisssssss", $isShInt, $pExtra, $sQty, $isDispatchedFlagInt, $psono, $psono, $pId, $prodName, $sono, $sono, $pId, $prodName);
+                    $updPoc->bind_param("idissssssss", $isShInt, $pExtra, $sQty, $psono, $psono, $pId, $prodName, $sono, $sono, $pId, $prodName);
                     $updPoc->execute();
                     $updPoc->close();
                 }
-            }
 
-            // If the invoice being edited was already physically dispatched, DO NOT reset trays or allocations!
-            if (!$isTargetInvoiceDispatched) {
-                // USER RULE: When un-dispatched invoice is created or edited, DO NOT auto-load trays or mark final dispatch.
-                // Trays MUST remain in Polyhouse / Readytosale so the user manually scans and loads them in /readytoload/readytoload.php.
-                // Reset any 'Loaded' or 'ReadyToDispatch' trays for this invoice back to 'Readytosale' (NEVER touch 'Final Dispatch'!).
-                if (!empty($dinvoiceno)) {
-                    $invDateOnly = date('Y-m-d', strtotime($effInvoiceDate));
-                    $escInv = mysqli_real_escape_string($krfconn, $dinvoiceno);
-                    $escInvDate = mysqli_real_escape_string($krfconn, $invDateOnly);
-                    $escPso = mysqli_real_escape_string($krfconn, $psono);
-                    $escLogin = mysqli_real_escape_string($krfconn, $loginid);
-
-                    // Update krf_readystock_allocation for this crop item with invoice_number and invoice_date
-                    if (!$isBoxPacking) {
-                        $escPIdVal = mysqli_real_escape_string($krfconn, $pId);
-                        $escProdNameVal = mysqli_real_escape_string($krfconn, $prodName);
-
-                        $stkList = array_filter(array_map('trim', explode(',', $stkNo)));
-                        $batchCondRsa = "";
-                        if (!empty($stkList)) {
-                            $escStkArr = array_map(function($s) use ($krfconn) { return "'" . mysqli_real_escape_string($krfconn, $s) . "'"; }, $stkList);
-                            $stkInStr = implode(',', $escStkArr);
-                            $batchCondRsa = " AND (stockorder_no IN ({$stkInStr}) OR allocate_stockorder_no IN ({$stkInStr}))";
-                        }
-
-                        $krfconn->query("
-                            UPDATE krf_readystock_allocation
-                            SET 
-                                invoice_number = '{$escInv}',
-                                invoice_date = '{$escInvDate}',
-                                updated_at = NOW(),
-                                updated_by = '{$escLogin}'
-                            WHERE (
-                                ((psono = '{$escPso}' AND '{$escPso}' != '') AND (productid = '{$escPIdVal}' OR productname = '{$escProdNameVal}'))
-                                OR ((clientid = '{$effClientId}' AND '{$effClientId}' != '') AND (productid = '{$escPIdVal}' OR productname = '{$escProdNameVal}') AND (psono IS NULL OR psono = '' OR psono = '{$escPso}'))
-                            )
-                            {$batchCondRsa}
-                            AND LOWER(IFNULL(status, '')) NOT IN ('cancel', 'dispatched')
-                            AND (tedit IS NULL OR tedit = '')
-                            AND (invoice_number IS NULL OR invoice_number = '' OR invoice_number = '{$escInv}')
-                        ");
-                    }
-
-                    $krfconn->query("
-                        UPDATE krf_polyhouse_plant_details
-                        SET status = 'Readytosale',
-                            workingstatus = 'Readytosale',
-                            movementremark = CONCAT('Reset to Readytosale on invoice edit (', '{$escInv}', ')')
-                        WHERE movementremark LIKE '%{$escInv}%'
-                          AND status IN ('Loaded', 'ReadyToDispatch')
-                          AND LOWER(IFNULL(status, '')) != 'final dispatch'
-                          AND (tedit IS NULL OR tedit = '')
-                    ");
-                    $krfconn->query("
-                        UPDATE krf_readytosale_stocks
-                        SET status = 'Readytosale',
-                            loaded_qty = 0,
-                            loaded_at = NULL,
-                            loaded_by = NULL
-                        WHERE remarks LIKE '%{$escInv}%'
-                          AND status IN ('Loaded', 'ReadyToDispatch')
-                          AND LOWER(IFNULL(status, '')) != 'final dispatch'
-                    ");
-                    $krfconn->query("
-                        UPDATE krf_readystock_allocation
-                        SET status = 'allocated',
-                            invoice_number = '{$escInv}',
-                            invoice_date = '{$escInvDate}',
-                            updated_at = NOW(),
-                            updated_by = '{$escLogin}'
-                        WHERE invoice_number = '{$escInv}'
-                          AND LOWER(IFNULL(status, '')) NOT IN ('cancel', 'dispatched')
-                          AND (tedit IS NULL OR tedit = '')
-                    ");
+                // Update krf_readystock_allocation to 'readytoload' and set invoice_number and invoice_date
+                $invDateOnly = !empty($effInvoiceDate) ? date('Y-m-d', strtotime($effInvoiceDate)) : date('Y-m-d');
+                $updRsaInv = $krfconn->prepare("
+                    UPDATE krf_readystock_allocation
+                    SET status = 'readytoload',
+                        invoice_number = ?,
+                        invoice_date = ?,
+                        updated_at = NOW(),
+                        updated_by = ?
+                    WHERE (
+                        ((psono = ? AND ? != '') AND (productid = ? OR productname = ?))
+                        OR ((allocate_stockorder_no = ? OR stockorder_no = ?) AND ? != '')
+                    )
+                    AND (tedit IS NULL OR tedit = '' OR tedit = '0')
+                    AND LOWER(IFNULL(status, '')) != 'cancel'
+                ");
+                if ($updRsaInv) {
+                    $updRsaInv->bind_param(
+                        "ssssssssss",
+                        $dinvoiceno,
+                        $invDateOnly,
+                        $loginid,
+                        $psono,
+                        $psono,
+                        $pId,
+                        $prodName,
+                        $stkNo,
+                        $stkNo,
+                        $stkNo
+                    );
+                    $updRsaInv->execute();
+                    $updRsaInv->close();
                 }
             }
-        }
 
-        // Ensure active allocation records for this specific invoice have invoice_number & invoice_date populated (never overwrite other invoices or dispatched allocations)
-        if (!empty($dinvoiceno) && !empty($psono) && !$isTargetInvoiceDispatched) {
-            $invDateOnly = date('Y-m-d', strtotime($effInvoiceDate));
-            $escInv = mysqli_real_escape_string($krfconn, $dinvoiceno);
-            $escInvDate = mysqli_real_escape_string($krfconn, $invDateOnly);
-            $escPso = mysqli_real_escape_string($krfconn, $psono);
-            $escLogin = mysqli_real_escape_string($krfconn, $loginid);
-
-            $krfconn->query("
-                UPDATE krf_readystock_allocation
-                SET 
-                    invoice_number = '{$escInv}',
-                    invoice_date = '{$escInvDate}',
-                    updated_at = NOW(),
-                    updated_by = '{$escLogin}'
-                WHERE psono = '{$escPso}'
-                  AND (invoice_number IS NULL OR invoice_number = '' OR invoice_number = '{$escInv}')
-                  AND LOWER(IFNULL(status, '')) NOT IN ('cancel', 'dispatched')
-                  AND (tedit IS NULL OR tedit = '')
-            ");
+            // AUTO-MARK RSO / SO ORDERS: Automatically mark active trays as Loaded
+            if (!$isBoxPacking && !empty($stkNo) && preg_match('/^(RSO|SO)-/i', trim($stkNo))) {
+                autoMarkRsoTraysAsLoaded($krfconn, $psono, $stkNo, $totPlts, $effClientId, $loginid, $dinvoiceno);
+            }
         }
 
         // 5. Update krf_freightcharges & krf_deliveryaddress_location
@@ -9414,7 +9392,7 @@ if ($action == "GetActiveFinalDispatchDates") {
                 'total_allocated_plants' => 0,
                 'remarks' => 'Self Pickup By Farmer/Client',
                 'loginid' => $loginid,
-                'status' => 'Planned'
+                'status' => 'Dispatched'
             ]);
         } else if (!empty($vehicleno) || $vehicle_id > 0) {
             saveOrUpdateVehicleTripAndHistory($krfconn, [

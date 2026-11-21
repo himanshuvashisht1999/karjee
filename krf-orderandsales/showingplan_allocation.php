@@ -670,6 +670,84 @@ if (count($dddr) > 0) {
         }
     }
 
+    /* Box Details Modal & Clickable Badge */
+    .btn-view-order-boxes {
+        transition: all 0.2s ease;
+        border: 1.5px solid #cbd5e1 !important;
+        background-color: #f8fafc;
+        color: #1e293b;
+        cursor: pointer;
+    }
+    .btn-view-order-boxes:hover {
+        background-color: #ecfdf5 !important;
+        border-color: var(--primary-green) !important;
+        color: var(--primary-green) !important;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(27, 158, 119, 0.25);
+    }
+    .obd-modal-header {
+        background: linear-gradient(135deg, #065f46 0%, #10b981 100%);
+        color: white;
+    }
+    .obd-kpi-card {
+        background: white;
+        border-radius: 12px;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+        display: flex;
+        flex-direction: column;
+    }
+    .obd-kpi-card small {
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        letter-spacing: 0.5px;
+    }
+    .obd-kpi-card h5 {
+        margin: 0;
+        font-weight: 800;
+        font-size: 1.25rem;
+    }
+    .obd-filter-btn {
+        border-radius: 20px;
+        padding: 0.3rem 0.8rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+        border: 1px solid #cbd5e1;
+        background: white;
+        color: #334155;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .obd-filter-btn:hover {
+        border-color: var(--primary-green);
+        color: var(--primary-green);
+    }
+    .obd-filter-btn.active {
+        background: var(--primary-green);
+        border-color: var(--primary-green);
+        color: white;
+    }
+    .obd-boxes-table th {
+        background-color: #f8fafc;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #475569;
+        font-weight: 700;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }
+    .obd-boxes-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
     /* --- Responsive Mobile View --- */
     @media (max-width: 991.98px) {
         .strips-header {
@@ -998,6 +1076,123 @@ if (count($dddr) > 0) {
     </div>
 </div>
 
+<!-- ORDER BOX DETAILS MODAL -->
+<div class="modal fade" id="orderBoxDetailsModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-90w modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <!-- Modal Header -->
+            <div class="modal-header obd-modal-header border-0 py-3 px-4">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="bg-white text-success p-2.5 rounded-3 shadow-sm d-flex align-items-center justify-content-center" style="width: 44px; height: 44px; font-size: 1.35rem;">
+                        <i class="bi bi-boxes"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold m-0" id="obdModalTitle">Production Order Box Details</h5>
+                        <div class="small opacity-85 mt-0.5" id="obdModalSubtitle">Loading order information...</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white shadow-none" data-bs-dismiss="modal"></button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="modal-body p-3 p-md-4 bg-light">
+                <!-- Status KPI Summary Cards -->
+                <div class="row g-2 mb-3" id="obdKpiRow">
+                    <div class="col-6 col-md-3">
+                        <div class="obd-kpi-card">
+                            <small>Total Boxes</small>
+                            <h5 class="text-dark mt-1" id="obdKpiTotalBoxes">0</h5>
+                            <span class="text-muted small" style="font-size: 0.72rem;" id="obdKpiTotalTrays">0 Trays</span>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="obd-kpi-card border-warning-subtle">
+                            <small class="text-warning-emphasis">Pending Allocation</small>
+                            <h5 class="text-warning-emphasis mt-1" id="obdKpiPendingBoxes">0</h5>
+                            <span class="text-muted small" style="font-size: 0.72rem;" id="obdKpiPendingTrays">0 Trays</span>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="obd-kpi-card border-primary-subtle">
+                            <small class="text-primary">Allocated (Polyhouse)</small>
+                            <h5 class="text-primary mt-1" id="obdKpiAllocatedBoxes">0</h5>
+                            <span class="text-muted small" style="font-size: 0.72rem;" id="obdKpiAllocatedTrays">0 Trays</span>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="obd-kpi-card border-success-subtle">
+                            <small class="text-success">Received at Polyhouse</small>
+                            <h5 class="text-success mt-1" id="obdKpiReceivedPhBoxes">0</h5>
+                            <span class="text-muted small" style="font-size: 0.72rem;" id="obdKpiReceivedPhTrays">0 Trays</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search & Filter Controls -->
+                <div class="bg-white p-3 rounded-3 border mb-3 shadow-sm">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                        <!-- Search -->
+                        <div class="input-group" style="max-width: 320px;">
+                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <input type="text" id="obdSearchInput" class="form-control border-start-0" placeholder="Search Box ID, QR, Polyhouse, Status...">
+                        </div>
+                        
+                        <!-- Status Filter Pills -->
+                        <div class="d-flex align-items-center flex-wrap gap-1.5" id="obdStatusFilterContainer">
+                            <button class="obd-filter-btn active" data-filter-status="all">All Statuses <span class="badge bg-secondary-subtle text-dark ms-1" id="obdBadgeFilterAll">0</span></button>
+                            <button class="obd-filter-btn" data-filter-status="Pending">Pending <span class="badge bg-warning-subtle text-warning-emphasis ms-1" id="obdBadgeFilterPending">0</span></button>
+                            <button class="obd-filter-btn" data-filter-status="Allocated">Allocated <span class="badge bg-primary-subtle text-primary ms-1" id="obdBadgeFilterAllocated">0</span></button>
+                            <button class="obd-filter-btn" data-filter-status="ReceivedAtPolyhouse">At Polyhouse <span class="badge bg-success-subtle text-success ms-1" id="obdBadgeFilterReceived">0</span></button>
+                        </div>
+
+                        <!-- Root Type Filter (if applicable) -->
+                        <div class="d-flex align-items-center gap-1" id="obdRootTypeContainer" style="display:none;">
+                            <span class="text-muted small fw-bold me-1" style="font-size: 0.72rem;">Type:</span>
+                            <div class="btn-group btn-group-sm" id="obdRootTypeButtonGroup"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Box Details Table Container -->
+                <div class="bg-white rounded-3 border shadow-sm overflow-hidden" style="max-height: 480px; overflow-y: auto;">
+                    <div id="obdLoadingState" class="text-center py-5">
+                        <div class="spinner-border text-success" role="status"></div>
+                        <div class="text-muted small mt-2">Loading box records from karjeefarm.krf_polyhouse_germinated_boxes...</div>
+                    </div>
+                    <div id="obdEmptyState" class="text-center py-5 d-none">
+                        <i class="bi bi-inbox fs-1 text-muted opacity-50"></i>
+                        <h6 class="fw-bold text-muted mt-2">No boxes match the current filter</h6>
+                    </div>
+                    <table class="table obd-boxes-table table-hover table-striped mb-0 d-none" id="obdTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Box ID</th>
+                                <th>Box QR Code</th>
+                                <th>Root Type</th>
+                                <th>Sowing Lot No</th>
+                                <th>Trays</th>
+                                <th>PK Date</th>
+                                <th>OP Date</th>
+                                <th>Target Polyhouse / Location</th>
+                                <th>Status</th>
+                                <th>Received / Allocated By</th>
+                            </tr>
+                        </thead>
+                        <tbody id="obdTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer bg-white border-0 py-2.5 px-4 shadow-sm d-flex justify-content-between align-items-center">
+                <span class="small text-muted" id="obdFooterCount">Showing 0 boxes</span>
+                <button type="button" class="btn btn-secondary px-4 fw-bold rounded-3" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php include('../footer.php'); ?>
 <script type="text/javascript" src="<?php echo $prefix; ?>krf-orderandsales/js/pjs_function.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -1085,15 +1280,26 @@ if (count($dddr) > 0) {
         let totalPendingTrays = 0;
         let totalAllocatedBoxes = 0;
         let distinctDates = new Set();
+        let allocatedBoxIdSet = new Set();
 
         data.forEach(item => {
             totalPendingBoxes += parseInt(item.pending_boxes_count || 0);
             totalPendingTrays += parseInt(item.pending_trays_count || 0);
-            totalAllocatedBoxes += parseInt(item.allocated_boxes_count || 0);
+            if (Array.isArray(item.allocated_boxes)) {
+                item.allocated_boxes.forEach(ab => {
+                    if (ab.boxid) allocatedBoxIdSet.add(ab.boxid);
+                });
+            } else {
+                totalAllocatedBoxes += parseInt(item.allocated_boxes_count || 0);
+            }
             if (item.boxopeningdate) {
                 distinctDates.add(item.boxopeningdate);
             }
         });
+
+        if (allocatedBoxIdSet.size > 0) {
+            totalAllocatedBoxes = allocatedBoxIdSet.size;
+        }
 
         $("#kpiTotalPendingBoxes").text(totalPendingBoxes.toLocaleString());
         $("#kpiTotalPendingTrays").text(totalPendingTrays.toLocaleString());
@@ -1390,9 +1596,16 @@ if (count($dddr) > 0) {
                             </div>
 
                             <div class="strip-item total-boxes-col">
-                                <span class="badge bg-light text-dark border fw-bold px-3 py-1.5" style="font-size: 0.85rem;">
-                                    ${item.total_boxes_count}
-                                </span>
+                                <button type="button" 
+                                        class="badge bg-light text-dark border border-2 fw-bold px-3 py-1.5 btn-view-order-boxes" 
+                                        data-stockorderno="${item.stockorderno}" 
+                                        data-roottype="${item.roottype || ''}"
+                                        data-lotno="${item.sowinglotno_internal || ''}"
+                                        data-productname="${encodeURIComponent(item.productname)}"
+                                        title="Click to view Box Details of Order #${item.stockorderno}"
+                                        style="font-size: 0.85rem; cursor: pointer; transition: all 0.2s ease;">
+                                    <i class="bi bi-boxes me-1 text-primary"></i> ${item.total_boxes_count}
+                                </button>
                                 <div class="small text-warning-emphasis fw-bold mt-1" style="font-size: 0.72rem;">
                                     ${item.pending_boxes_count} Pending (${item.pending_trays_count} Trays)
                                 </div>
@@ -2260,7 +2473,205 @@ if (count($dddr) > 0) {
     });
 
     // -------------------------------------------------------------
-    // 9. Document Ready Initialization
+    // 9. Order Germinated Box Details Modal & Filter Logic
+    // -------------------------------------------------------------
+    let currentObdBoxes = [];
+    let activeObdStatusFilter = 'all';
+    let activeObdRootTypeFilter = 'all';
+
+    $(document).on("click", ".btn-view-order-boxes", function (e) {
+        e.stopPropagation();
+        const stockorderno = $(this).data("stockorderno");
+        const roottype = $(this).data("roottype") || '';
+        const lotno = $(this).data("lotno") || '';
+        const productname = decodeURIComponent($(this).data("productname") || '');
+        openOrderBoxDetails(stockorderno, roottype, lotno, productname);
+    });
+
+    function openOrderBoxDetails(stockorderno, roottype, lotno, productname) {
+        if (!stockorderno) return;
+
+        $("#obdModalTitle").html(`Box Details: Production Order <span class="text-warning-emphasis">#${stockorderno}</span>`);
+        $("#obdModalSubtitle").html(`
+            <span class="me-3"><i class="bi bi-tag-fill me-1"></i> ${productname || 'N/A'}</span>
+            ${roottype ? `<span class="me-3"><i class="bi bi-layers-fill me-1"></i> ${roottype}</span>` : ''}
+            ${lotno ? `<span><i class="bi bi-upc me-1"></i> Lot: ${lotno}</span>` : ''}
+        `);
+
+        // Reset UI State
+        $("#obdLoadingState").removeClass('d-none');
+        $("#obdEmptyState").addClass('d-none');
+        $("#obdTable").addClass('d-none');
+        $("#obdSearchInput").val('');
+        activeObdStatusFilter = 'all';
+        activeObdRootTypeFilter = 'all';
+        $(".obd-filter-btn").removeClass('active');
+        $(`.obd-filter-btn[data-filter-status="all"]`).addClass('active');
+
+        const modalEl = document.getElementById('orderBoxDetailsModal');
+        const modalObj = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modalObj.show();
+
+        const projectid = currentProjectId || $("body").data("projectid") || $("#hidden_projectid").val() || 0;
+
+        $.ajax({
+            url: "modal/product_modal.php?action=GetOrderGerminatedBoxesDetails",
+            type: "POST",
+            data: { stockorderno: stockorderno, projectid: projectid, roottype: roottype },
+            dataType: "json",
+            success: function (res) {
+                $("#obdLoadingState").addClass('d-none');
+                if (res.status !== "success" || !Array.isArray(res.boxes)) {
+                    $("#obdEmptyState").removeClass('d-none').find('h6').text(res.message || "No germination box records found for this order.");
+                    return;
+                }
+
+                currentObdBoxes = res.boxes;
+                const summary = res.summary || {};
+
+                // Update KPI counters
+                $("#obdKpiTotalBoxes").text(summary.total_boxes || currentObdBoxes.length);
+                $("#obdKpiTotalTrays").text((summary.total_trays || 0).toLocaleString() + ' Trays');
+                $("#obdKpiPendingBoxes").text(summary.pending_boxes || 0);
+                $("#obdKpiPendingTrays").text((summary.pending_trays || 0).toLocaleString() + ' Trays');
+                $("#obdKpiAllocatedBoxes").text(summary.allocated_boxes || 0);
+                $("#obdKpiAllocatedTrays").text((summary.allocated_trays || 0).toLocaleString() + ' Trays');
+                $("#obdKpiReceivedPhBoxes").text(summary.received_ph_boxes || 0);
+                $("#obdKpiReceivedPhTrays").text((summary.received_ph_trays || 0).toLocaleString() + ' Trays');
+
+                // Update Filter Badges
+                $("#obdBadgeFilterAll").text(summary.total_boxes || currentObdBoxes.length);
+                $("#obdBadgeFilterPending").text(summary.pending_boxes || 0);
+                $("#obdBadgeFilterAllocated").text(summary.allocated_boxes || 0);
+                $("#obdBadgeFilterReceived").text(summary.received_ph_boxes || 0);
+
+                // Root type filter buttons if multiple
+                const rootTypes = summary.roottypes || [];
+                if (rootTypes.length > 1) {
+                    let rtBtns = `<button type="button" class="btn btn-outline-secondary btn-sm obd-rt-btn active" data-rt="all">All</button>`;
+                    rootTypes.forEach(rt => {
+                        rtBtns += `<button type="button" class="btn btn-outline-secondary btn-sm obd-rt-btn" data-rt="${rt}">${rt}</button>`;
+                    });
+                    $("#obdRootTypeButtonGroup").html(rtBtns);
+                    $("#obdRootTypeContainer").show();
+                } else {
+                    $("#obdRootTypeContainer").hide();
+                }
+
+                renderObdTable();
+            },
+            error: function () {
+                $("#obdLoadingState").addClass('d-none');
+                $("#obdEmptyState").removeClass('d-none').find('h6').text("Failed to load germination boxes from server. Please retry.");
+            }
+        });
+    }
+
+    function renderObdTable() {
+        const searchVal = $("#obdSearchInput").val().toLowerCase().trim();
+
+        let filtered = currentObdBoxes.filter(b => {
+            // Status Filter
+            if (activeObdStatusFilter !== 'all') {
+                if (activeObdStatusFilter === 'Pending') {
+                    if (b.status !== 'PendingAllocation' && b.status !== 'ReceivedAfterSowing') return false;
+                } else if (b.status !== activeObdStatusFilter) {
+                    return false;
+                }
+            }
+
+            // Root Type Filter
+            if (activeObdRootTypeFilter !== 'all') {
+                if (b.roottype !== activeObdRootTypeFilter) return false;
+            }
+
+            // Search Filter
+            if (searchVal) {
+                const searchStr = `${b.boxid} ${b.qrcode} ${b.roottype} ${b.sowinglotno_internal} ${b.polyhousename} ${b.physicallocation} ${b.status} ${b.created_by} ${b.received_by}`.toLowerCase();
+                if (!searchStr.includes(searchVal)) return false;
+            }
+
+            return true;
+        });
+
+        if (filtered.length === 0) {
+            $("#obdEmptyState").removeClass('d-none');
+            $("#obdTable").addClass('d-none');
+            $("#obdFooterCount").text("Showing 0 boxes");
+            return;
+        }
+
+        $("#obdEmptyState").addClass('d-none');
+        $("#obdTable").removeClass('d-none');
+
+        let rowsHtml = '';
+        let totalTraysFiltered = 0;
+
+        filtered.forEach((b, idx) => {
+            totalTraysFiltered += parseInt(b.traycountinbox || 0);
+
+            let statusBadge = '';
+            if (b.status === 'PendingAllocation' || b.status === 'ReceivedAfterSowing') {
+                statusBadge = `<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle fw-bold px-2 py-1">${b.status}</span>`;
+            } else if (b.status === 'Allocated') {
+                statusBadge = `<span class="badge bg-primary-subtle text-primary border border-primary-subtle fw-bold px-2 py-1">${b.status}</span>`;
+            } else if (b.status === 'ReceivedAtPolyhouse') {
+                statusBadge = `<span class="badge bg-success-subtle text-success border border-success-subtle fw-bold px-2 py-1">${b.status}</span>`;
+            } else if (b.status === 'Removed') {
+                statusBadge = `<span class="badge bg-danger-subtle text-danger border border-danger-subtle fw-bold px-2 py-1">${b.status}</span>`;
+            } else {
+                statusBadge = `<span class="badge bg-secondary-subtle text-secondary border fw-bold px-2 py-1">${b.status}</span>`;
+            }
+
+            rowsHtml += `
+                <tr>
+                    <td><b>#${idx + 1}</b></td>
+                    <td><span class="badge bg-light text-dark border fw-bold">#${b.boxid}</span></td>
+                    <td><span class="qr-badge"><i class="bi bi-qr-code me-1"></i>${b.qrcode}</span></td>
+                    <td>${b.roottype ? `<span class="badge ${b.roottype === 'Root' ? 'bg-info-subtle text-info border' : 'bg-primary-subtle text-primary border'} fw-bold">${b.roottype}</span>` : '-'}</td>
+                    <td><small class="fw-semibold text-muted">${b.sowinglotno_internal || '-'}</small></td>
+                    <td><span class="badge bg-light text-dark border fw-bold">${b.traycountinbox} Trays</span></td>
+                    <td><small class="text-muted">${b.boxpackingdate_dsp}</small></td>
+                    <td><small class="fw-bold text-success">${b.boxopeningdate_dsp}</small></td>
+                    <td>
+                        ${b.polyhousename && b.polyhousename !== '-' ? `
+                            <span class="polyhouse-badge"><i class="bi bi-house-fill"></i> ${b.polyhousename}</span>
+                            ${b.physicallocation ? `<small class="text-muted d-block" style="font-size:0.68rem;">${b.physicallocation}</small>` : ''}
+                        ` : `<span class="text-muted small">Not Assigned</span>`}
+                    </td>
+                    <td>${statusBadge}</td>
+                    <td>
+                        <div class="fw-bold small">${b.received_by && b.received_by !== '-' ? b.received_by : (b.created_by || '-')}</div>
+                        <small class="text-muted" style="font-size:0.68rem;">${b.received_at && b.received_at !== '-' ? b.received_at : b.created_at}</small>
+                    </td>
+                </tr>
+            `;
+        });
+
+        $("#obdTableBody").html(rowsHtml);
+        $("#obdFooterCount").text(`Showing ${filtered.length} of ${currentObdBoxes.length} boxes (${totalTraysFiltered.toLocaleString()} Trays)`);
+    }
+
+    $(document).on("click", ".obd-filter-btn", function () {
+        $(".obd-filter-btn").removeClass('active');
+        $(this).addClass('active');
+        activeObdStatusFilter = $(this).data("filter-status");
+        renderObdTable();
+    });
+
+    $(document).on("click", ".obd-rt-btn", function () {
+        $(".obd-rt-btn").removeClass('active');
+        $(this).addClass('active');
+        activeObdRootTypeFilter = $(this).data("rt");
+        renderObdTable();
+    });
+
+    $(document).on("input", "#obdSearchInput", function () {
+        renderObdTable();
+    });
+
+    // -------------------------------------------------------------
+    // 10. Document Ready Initialization
     // -------------------------------------------------------------
     $(document).ready(function () {
         // Automatically load ALL pending allocation boxes on page load!
